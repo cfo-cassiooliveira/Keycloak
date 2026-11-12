@@ -14,12 +14,21 @@ if ! curl -fs http://127.0.0.1:9100/health/ready 2>/dev/null | grep -q '"UP"'; t
   exit 2
 fi
 
+# O Keycloak só é publicado em 127.0.0.1:8180 e redireciona sempre para localhost:8180.
+# - Linux (CI): rede do host; o navegador do container acessa localhost:8180 direto.
+# - Docker Desktop (Windows/macOS): host.docker.internal alcança o 127.0.0.1 da máquina; o global-setup do Playwright
+#   encaminha localhost:8180 do container para lá.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  network_args=(--network host)
+else
+  network_args=(-e E2E_FORWARD_TO=host.docker.internal:8180)
+fi
+
 # node_modules fica num volume Docker (não polui o repositório); npm ci respeita o package-lock.json.
 MSYS_NO_PATHCONV=1 docker run --rm --ipc=host \
+  "${network_args[@]}" \
   -v "${host_dir}:/workspace" \
   -v keycloak-theme-tests-node-modules:/workspace/theme-tests/node_modules \
   -w /workspace/theme-tests \
-  --add-host=host.docker.internal:host-gateway \
-  -e E2E_FORWARD_TO=host.docker.internal:8180 \
   "$PLAYWRIGHT_IMAGE" \
   bash -c 'npm ci --no-audit --no-fund --loglevel=error && npx playwright test "$@"' -- "$@"
