@@ -34,6 +34,8 @@ import com.workspace.keycloak.support.WorkspaceServerConfig;
 class WorkspaceRealmIT {
 
     private static final String STRONG_PASSWORD = "Workspace-Strong-1!";
+    // Acima de quickLoginCheckMilliSeconds (1000 ms) do realm.
+    private static final long QUICK_LOGIN_SPACING_MS = 1200;
 
     @InjectRealm(fromJson = "/realm-workspace.json")
     ManagedRealm realm;
@@ -50,7 +52,8 @@ class WorkspaceRealmIT {
 
         assertThat(representation.getEventsListeners()).containsExactly("workspace-audit");
         assertThat(representation.isEventsEnabled()).isFalse();
-        assertThat(representation.isAdminEventsEnabled()).isTrue();
+        // O listener recebe as ações administrativas sem gravá-las no banco, onde ficaria o IP (R2).
+        assertThat(representation.isAdminEventsEnabled()).isFalse();
         assertThat(representation.isAdminEventsDetailsEnabled()).isFalse();
         assertThat(representation.isBruteForceProtected()).isTrue();
         assertThat(representation.getLoginTheme()).isEqualTo("workspace");
@@ -162,21 +165,115 @@ class WorkspaceRealmIT {
     }
 
     @Test
-    void passwordGrant_AfterRepeatedFailures_LocksUserTemporarily() throws Exception {
+    void passwordGrant_AfterFiveSlowFailures_LocksUserButNotAfterFour() throws Exception {
         String clientId = createDirectGrantClient();
-        createUser("brute.force.user");
-        assertThat(OidcHttp.passwordGrant(
-                httpClient, realm.getBaseUrl(), clientId, "brute.force.user", STRONG_PASSWORD).status())
-                .isEqualTo(200);
+        createUser("brute.force.slow");
 
-        for (int attempt = 0; attempt < 5; attempt++) {
-            OidcHttp.passwordGrant(httpClient, realm.getBaseUrl(), clientId, "brute.force.user", "wrong-password");
-        }
-        OidcHttp.Response response = OidcHttp.passwordGrant(
-                httpClient, realm.getBaseUrl(), clientId, "brute.force.user", STRONG_PASSWORD);
+        // Espaçadas acima de quickLoginCheckMilliSeconds (1 s): mede só o failureFactor (5), não a regra de rapidez.
+        slowFailures(clientId, "brute.force.slow", 4);
+        assertThat(grant(clientId, "brute.force.slow", STRONG_PASSWORD).status())
+                .as("4 falhas ainda abaixo do failureFactor").isEqualTo(200);
+
+        slowFailures(clientId, "brute.force.slow", 5);
+        OidcHttp.Response locked = grant(clientId, "brute.force.slow", STRONG_PASSWORD);
+
+        assertThat(locked.status()).as("5 falhas atingem o failureFactor").isEqualTo(400);
+        assertThat(locked.body()).contains("invalid_grant");
+    }
+
+    @Test
+    void passwordGrant_AfterQuickRepeatedFailures_LocksUserTemporarily() throws Exception {
+        String clientId = createDirectGrantClient();
+        createUser("brute.force.quick");
+
+        grant(clientId, "brute.force.quick", "wrong-password");
+        grant(clientId, "brute.force.quick", "wrong-password");
+        OidcHttp.Response response = grant(clientId, "brute.force.quick", STRONG_PASSWORD);
 
         assertThat(response.status()).isEqualTo(400);
         assertThat(response.body()).contains("invalid_grant");
+    }
+
+    @Test
+    void loginPage_LanguageSwitcherHasTranslatedNameAndVisibleTextInAccessibleName() throws Exception {
+        String body = OidcHttp.authorizationRequest(
+                httpClient, realm.getBaseUrl(), "account-console", accountRedirectUri("workspace"), true, "pt-BR")
+                .body();
+
+        assertThat(body).contains("aria-label=\"Idiomas\"")
+                // WCAG 2.5.3: sem aria-label nos links; a sigla visível no celular leva o nome completo junto.
+                .doesNotContain("aria-label=\"Inglês", "aria-label=\"Português")
+                .containsPattern("<span class=\"d-sm-none\">EN<span class=\"visually-hidden\"> [^<]+</span></span>");
+    }
+
+    @Test
+    void errorPage_WhenLoginSessionCookieIsMissing_RendersInWorkspaceLayoutWithMessage() throws Exception {
+        OidcHttp.Response response = OidcHttp.submitLoginFormWithoutCookies(httpClient, realm.getBaseUrl(),
+                "account-console", accountRedirectUri("workspace"));
+
+        // error.ftl do tema base mostra a mensagem no corpo (não em alerta), dentro do layout do Workspace.
+        assertThat(response.status()).isEqualTo(400);
+        assertThat(response.body())
+                .contains("/login/workspace/css/workspace.css", "class=\"ws-title\"", "ws-brand")
+                .contains("id=\"kc-error-message\"", "Cookie de reinício de login não encontrado")
+                .contains("id=\"backToApplication\"");
+    }
+
+    @Test
+    void updatePasswordPage_WhenPasswordIsTemporary_ShowsWarningAndBootstrapForm() throws Exception {
+        UserRepresentation user = UserBuilder.create("temporary.password.user")
+                .email("temporary.password.user@example.com").name("Temp", "User").emailVerified(true).enabled(true)
+                .build();
+        CredentialRepresentation temporary = password(STRONG_PASSWORD);
+        temporary.setTemporary(true);
+        user.setCredentials(List.of(temporary));
+        try (Response created = realm.admin().users().create(user)) {
+            assertThat(created.getStatus()).isEqualTo(201);
+        }
+
+        OidcHttp.Response response = OidcHttp.submitLoginForm(httpClient, realm.getBaseUrl(), "account-console",
+                accountRedirectUri("workspace"), "temporary.password.user", STRONG_PASSWORD);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("alert-warning\" role=\"status\"", "ws-icon ws-icon-warning")
+                .contains("id=\"password-new\"", "form-control form-control-lg", "btn btn-primary");
+    }
+
+    @Test
+    void otpPage_AfterPassword_ShowsAttemptedUsernameWithRestartLink() throws Exception {
+        UserRepresentation user = UserBuilder.create("otp.user")
+                .email("otp.user@example.com").name("Otp", "User").emailVerified(true).enabled(true).build();
+        // Credencial TOTP no formato de importação do Keycloak: o login pede o código depois da senha.
+        CredentialRepresentation otp = new CredentialRepresentation();
+        otp.setType("otp");
+        otp.setUserLabel("smoke");
+        otp.setSecretData("{\"value\":\"JBSWY3DPEHPK3PXP\"}");
+        otp.setCredentialData("{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}");
+        user.setCredentials(List.of(password(STRONG_PASSWORD), otp));
+        try (Response created = realm.admin().users().create(user)) {
+            assertThat(created.getStatus()).isEqualTo(201);
+        }
+
+        OidcHttp.Response response = OidcHttp.submitLoginForm(httpClient, realm.getBaseUrl(), "account-console",
+                accountRedirectUri("workspace"), "otp.user", STRONG_PASSWORD);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("id=\"kc-attempted-username\"", "otp.user", "id=\"reset-login\"")
+                .contains("id=\"otp\"", "/login/workspace/css/workspace.css");
+    }
+
+    private OidcHttp.Response grant(String clientId, String username, String password) throws Exception {
+        return OidcHttp.passwordGrant(httpClient, realm.getBaseUrl(), clientId, username, password);
+    }
+
+    private void slowFailures(String clientId, String username, int count) throws Exception {
+        for (int attempt = 0; attempt < count; attempt++) {
+            Thread.sleep(QUICK_LOGIN_SPACING_MS);
+            grant(clientId, username, "wrong-password");
+        }
+        Thread.sleep(QUICK_LOGIN_SPACING_MS);
     }
 
     private String accountRedirectUri(String realmName) {
@@ -184,8 +281,12 @@ class WorkspaceRealmIT {
     }
 
     // Client só do teste: o realm versionado não permite password grant em nenhum client.
+    // Idempotente: vários testes do mesmo realm usam este client.
     private String createDirectGrantClient() {
         String clientId = "brute-force-test";
+        if (!realm.admin().clients().findByClientId(clientId).isEmpty()) {
+            return clientId;
+        }
         ClientRepresentation client = ClientBuilder.create(clientId).publicClient().directAccessGrantsEnabled().build();
         try (Response response = realm.admin().clients().create(client)) {
             assertThat(response.getStatus()).isEqualTo(201);

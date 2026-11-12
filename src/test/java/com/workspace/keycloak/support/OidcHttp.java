@@ -28,6 +28,8 @@ public final class OidcHttp {
     // Code challenge S256 fixo: os testes só precisam que o parâmetro seja válido, não trocam o code.
     private static final String CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
+    private static final int MAX_LOGIN_REDIRECTS = 3;
+
     private static final Pattern LOGIN_FORM_ACTION = Pattern.compile("<form id=\"kc-form-login\" action=\"([^\"]+)\"");
 
     private OidcHttp() {
@@ -78,6 +80,36 @@ public final class OidcHttp {
         post.setEntity(new UrlEncodedFormEntity(List.of(
                 new BasicNameValuePair("username", username),
                 new BasicNameValuePair("password", password)), StandardCharsets.UTF_8));
+        Response response = execute(httpClient, post, HttpClientContext.create());
+        // Ações obrigatórias (ex.: trocar senha temporária) chegam por redirecionamento dentro do fluxo de login.
+        for (int hop = 0; hop < MAX_LOGIN_REDIRECTS && isLoginActionRedirect(response, realmBaseUrl); hop++) {
+            HttpGet follow = new HttpGet(response.location());
+            follow.setHeader("Cookie", cookies);
+            follow.setConfig(RequestConfig.custom().setRedirectsEnabled(false).build());
+            response = execute(httpClient, follow, HttpClientContext.create());
+        }
+        return response;
+    }
+
+    private static boolean isLoginActionRedirect(Response response, String realmBaseUrl) {
+        return response.status() == 302 && response.location() != null
+                && response.location().startsWith(realmBaseUrl + "/login-actions/");
+    }
+
+    /** Envia o formulário de login sem os cookies da sessão de login: o Keycloak responde com a página de erro. */
+    public static Response submitLoginFormWithoutCookies(HttpClient httpClient, String realmBaseUrl, String clientId,
+            String redirectUri) throws IOException {
+        Response page = execute(httpClient, authorizationGet(realmBaseUrl, clientId, redirectUri, true, "pt-BR"),
+                HttpClientContext.create());
+        Matcher action = LOGIN_FORM_ACTION.matcher(page.body());
+        if (!action.find()) {
+            throw new IllegalStateException("Login form not found on page");
+        }
+        HttpPost post = new HttpPost(action.group(1).replace("&amp;", "&"));
+        post.setHeader("Accept-Language", "pt-BR");
+        post.setEntity(new UrlEncodedFormEntity(List.of(
+                new BasicNameValuePair("username", "nobody"),
+                new BasicNameValuePair("password", "nothing")), StandardCharsets.UTF_8));
         return execute(httpClient, post, HttpClientContext.create());
     }
 

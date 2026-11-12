@@ -35,6 +35,24 @@ O Keycloak 26 não tem handler GELF nativo, e GELF por TCP/UDP não confirma o r
    `keycloak-db`), como nos outros projetos; o pipeline do Graylog extrai nível, logger e texto do JSON. O Docker mantém
    cópia local.
 7. Sem `graylog-url` configurada, a auditoria continua no console (desenvolvimento sem Graylog).
+8. **Listener padrão `jboss-logging` neutralizado** (revisão de 2026-11-12): ele grava username e IP e, com os logs do
+   servidor indo ao Graylog, esses dados seriam indexados. Em camadas: níveis `trace` no compose (nunca aparece no log,
+   nem em realms criados depois); o `provisioner` troca o listener do realm `master` pelo `workspace-audit`; o pipeline
+   do Graylog descarta mensagens do logger `org.keycloak.events`. Smoke tests verificam que o username não chega ao log.
+9. **Reenvio e retenção do fallback**: `scripts/replay-fallback.sh` renomeia o arquivo de forma atômica (o Keycloak
+   passa a gravar num arquivo novo), reenvia linha a linha exigindo 202, devolve só o que falhar e descarta o que passou
+   da retenção do Graylog (`RETENTION_DAYS`, 30 dias): o fallback não guarda ids de usuário além do prazo (LGPD).
+10. **Fila em memória** (risco aceito): o desligamento normal entrega ou salva a fila (`stop_grace_period: 30s` no compose,
+    acima do timeout de desligamento de 4 s); um encerramento abrupto (SIGKILL, OOM) perde o que estiver na fila em
+    memória, normalmente vazia e no máximo `graylog-queue-capacity` registros com o Graylog lento. Persistir cada evento
+    em disco antes do envio dobraria a escrita do login sem ganho proporcional neste ambiente.
+11. **Origem das mensagens no GELF HTTP** (risco aceito no ambiente local): os inputs GELF do Graylog não autenticam o
+    remetente; qualquer container da rede `observability` ou processo local poderia forjar um evento de auditoria e
+    acionar alertas. Em produção é obrigatório input com TLS e autenticação de cliente (mTLS) e rede dedicada entre
+    Keycloak e Graylog.
+12. **Tracing (R6)**: o registro já leva `trace_id`/`span_id` quando o tracing do Keycloak estiver ligado, mas ele não é
+    ligado agora: o Graylog não armazena traces e ligar o exportador OTLP sem coletor só gera erros de envio. Liga-se junto
+    com um backend de traces (ex.: OpenTelemetry Collector), em decisão própria.
 
 ## Alternativas consideradas
 
@@ -50,8 +68,8 @@ O Keycloak 26 não tem handler GELF nativo, e GELF por TCP/UDP não confirma o r
 ## Consequências
 
 - **Positivas**: auditoria rica e sem dados pessoais no Graylog; nenhuma perda quando o Graylog cai; queda vira alerta.
-- **Negativas / riscos**: o arquivo de fallback não tem rotação nem reenvio automático (reenvio manual, linha a linha,
-  para o input HTTP); uma mensagem pode ser gravada duas vezes se o Graylog gravar e a resposta se perder (o
-  `event_id` permite deduplicar); IP continua fora (dúvida em aberto na Spec 001).
+- **Negativas / riscos**: reenvio do fallback é manual (`scripts/replay-fallback.sh`), não automático; uma mensagem pode
+  ser gravada duas vezes se o Graylog gravar e a resposta se perder ou o reenvio for interrompido (o `event_id` permite
+  deduplicar); riscos aceitos dos itens 10 e 11; IP continua fora (dúvida em aberto na Spec 001).
 - **Ações decorrentes**: input GELF HTTP, índice, streams, pipeline e alertas no projeto `graylog`;
   `docker-compose.graylog.yml` e `scripts/smoke-graylog.sh` neste projeto.

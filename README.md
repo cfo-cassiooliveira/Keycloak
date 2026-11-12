@@ -30,12 +30,16 @@ winget install EclipseAdoptium.Temurin.21.JDK
 
 ```bash
 ./scripts/build.sh                 # compila + testes unitários e de integração + cobertura (JaCoCo ≥ 80%)
-./scripts/generate-env.sh          # cria o .env com segredos aleatórios (uma vez)
-docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões
-./scripts/smoke-test.sh            # valida saúde, realm, providers, tema e auditoria
+./scripts/theme-unit.sh            # testes do JavaScript do tema (Vitest + jsdom, cobertura lcov)
+./scripts/generate-env.sh          # cria/completa o .env com segredos aleatórios (idempotente)
+docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + provisioner do realm master
+./scripts/smoke-test.sh            # valida saúde, realms, provisioner, providers, tema e auditoria
 ./scripts/e2e.sh                   # testes E2E do tema (Playwright em navegador real, em container)
 ./scripts/sonar-analysis.sh        # build + testes + análise no SonarQube local (falha se o Quality Gate reprovar)
 ```
+
+O CI (`.github/workflows/ci.yml`, [ADR-0005](doc/adr/0005-ci-e-cadeia-de-suprimentos.md)) roda tudo isso em cada PR,
+mais ShellCheck e Trivy (dependências e imagem).
 
 | Endereço | Uso |
 |---|---|
@@ -45,10 +49,16 @@ docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões
 
 As portas são publicadas só em `127.0.0.1`. O PostgreSQL não tem porta publicada.
 
-### Admin permanente
+### Realm master e administradores
 
-O `bootstrap-admin` é **temporário**. Na primeira subida: Admin Console → realm `master` → crie um usuário
-administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o
+O serviço `provisioner` (`provisioning/provision.sh`, idempotente, roda a cada `up`) deixa o `master` assim:
+auditoria pelo `workspace-audit` (o listener padrão grava username e IP), sem eventos gravados no banco, proteção contra
+força bruta, `admin-cli` **sem password grant** e o client de serviço `workspace-automation` (client credentials,
+segredo `KC_AUTOMATION_CLIENT_SECRET` do `.env`) para scripts e CI. Ele também reconcilia as configurações de auditoria
+do realm `workspace` (o `--import-realm` não altera realm já existente). Para reaplicar: `docker compose run --rm provisioner`.
+
+O `bootstrap-admin` é **temporário** e só entra pelo Admin Console. Na primeira subida: Admin Console → realm `master` →
+crie um administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o
 `bootstrap-admin`.
 
 ## Graylog
@@ -56,7 +66,8 @@ administrador nominal com a role `admin`, configure OTP para ele (Required actio
 ```bash
 # Graylog (../graylog) de pé antes; depois:
 docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
-./scripts/smoke-graylog.sh         # Graylog ok, Graylog fora (fallback) e volta (alerta)
+./scripts/smoke-graylog.sh         # Graylog ok, master sem dado pessoal, Graylog fora (fallback), volta (alerta), reenvio
+./scripts/replay-fallback.sh       # reenvia ao Graylog o que ficou no fallback
 ```
 
 - **Auditoria**: GELF HTTP para `graylog:12202/gelf` com confirmação (202), stream `Keycloak - Auditoria`. Campos:
@@ -65,9 +76,12 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - **Graylog fora do ar**: a mensagem vai para `/opt/keycloak/data/log/audit-fallback.log` (volume
   `keycloak-audit-fallback`) e o container loga `Could not save audit log to Graylog ...; fallback performed ...`
   (primeira falha na hora, depois um resumo por minuto). Na volta, o evento `AUDIT_FALLBACK_USED` gera alerta.
-- **Reenviar o fallback** (uma mensagem GELF por linha):
-  `docker compose exec keycloak cat /opt/keycloak/data/log/audit-fallback.log | while read -r l; do curl -s -o /dev/null -H "Content-Type: application/json" -d "$l" http://localhost:12202/gelf; done`
+- **Reenviar o fallback**: `./scripts/replay-fallback.sh` renomeia o arquivo de forma atômica (sem corrida com o
+  Keycloak), reenvia linha a linha exigindo 202, devolve ao fallback só o que falhar e descarta o que passou de
+  `RETENTION_DAYS` (30 dias, a retenção do Graylog). Interrompido, retoma o lote na próxima execução.
 - **Servidor e PostgreSQL**: Docker GELF driver (tags `keycloak-server`, `keycloak-db`), stream `Keycloak - Servidor`.
+  O listener padrão `jboss-logging` (username e IP) fica em nível `trace` e o Graylog descarta o logger
+  `org.keycloak.events`: nenhum username chega ao Graylog.
 - Opções do listener: `KC_SPI_EVENTS_LISTENER__WORKSPACE_AUDIT__GRAYLOG_URL`, `..._GRAYLOG_TIMEOUT_MS` (2000),
   `..._GRAYLOG_QUEUE_CAPACITY` (10000), `..._FALLBACK_FILE`, `..._ENVIRONMENT` (local).
 
@@ -85,6 +99,7 @@ Cada evento é uma linha JSON com `audit_schema`, `kind`, `type`/`operation`, `r
 - Herda os templates do tema `base` e mapeia as classes `kc*` para Bootstrap no `theme.properties`; `template.ftl` (layout)
   e `login.ftl` são próprios. As demais telas (troca de senha, OTP, erro...) usam o layout e as classes mapeadas.
 - Bootstrap 5.3.8 vem do WebJar no `pom.xml` (extraído no build); a fonte Manrope (OFL) fica em `resources/fonts`.
+- Testes em `theme-tests/`: `unit/` (Vitest + jsdom, 100% do `workspace.js`) e `e2e/` (Playwright).
 - **Mudou CSS, JS ou imagem do tema? Incremente a versão do `pom.xml`.** O Keycloak serve recursos com cache de 30 dias;
   a versão entra como `?v=` nos links e força o navegador a buscar a versão nova.
 
@@ -102,4 +117,5 @@ versão no `pom.xml` e no `Dockerfile`, e backup do volume `keycloak-db-data` an
 ## Pendências
 
 - Migração dos usuários do `legado`.
-- Itens R2–R9 da revisão de código ([tarefas](doc/tasks.md)).
+- Rever a exceção do Guava (CVE-2026-102554) até 2026-12-12 ou no próximo upgrade do Keycloak (ADR-0005).
+- Produção: input GELF com mTLS e rede dedicada (ADR-0004), tracing com backend de traces (R6).

@@ -21,7 +21,7 @@ services:
 
   keycloak:
     build: .
-    image: workspace-keycloak:0.3.0
+    image: workspace-keycloak:0.3.1
     # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
     command: ["start", "--optimized", "--import-realm"]
     environment:
@@ -35,6 +35,12 @@ services:
       KC_HOSTNAME: http://localhost:8180
       KC_HTTP_ENABLED: "true"
       KC_LOG_CONSOLE_OUTPUT: json
+      # O listener padrão jboss-logging grava username e IP; em "trace" ele nunca aparece no log (LGPD), nem em
+      # realms criados no futuro. A auditoria fica com o workspace-audit (provisioner configura o master).
+      KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__SUCCESS_LEVEL: trace
+      KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__ERROR_LEVEL: trace
+    # Tempo para a fila de auditoria ser entregue (ou ir para o fallback) no desligamento (ADR-0004).
+    stop_grace_period: 30s
     volumes:
       - ./realm:/opt/keycloak/data/import:ro
       # Fallback da auditoria (registros que o Graylog não aceitou), persistente entre reinícios (ADR-0004).
@@ -58,6 +64,23 @@ services:
       retries: 30
       start_period: 30s
     restart: unless-stopped
+
+  # Provisionamento idempotente do realm master (auditoria, força bruta, client de serviço, sem password grant).
+  # Roda a cada "docker compose up"; para reaplicar: docker compose run --rm provisioner
+  provisioner:
+    image: workspace-keycloak:0.3.1
+    entrypoint: ["bash", "/provisioning/provision.sh"]
+    environment:
+      KC_URL: http://keycloak:8080
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?KC_BOOTSTRAP_ADMIN_USERNAME ausente. Rode ./scripts/generate-env.sh}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
+      KC_AUTOMATION_CLIENT_SECRET: ${KC_AUTOMATION_CLIENT_SECRET:?KC_AUTOMATION_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+    volumes:
+      - ./provisioning:/provisioning:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   keycloak-db-data:
