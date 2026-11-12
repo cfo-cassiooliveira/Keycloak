@@ -21,7 +21,7 @@ services:
 
   keycloak:
     build: .
-    image: workspace-keycloak:0.2.0
+    image: workspace-keycloak:0.3.0
     # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
     command: ["start", "--optimized", "--import-realm"]
     environment:
@@ -37,6 +37,8 @@ services:
       KC_LOG_CONSOLE_OUTPUT: json
     volumes:
       - ./realm:/opt/keycloak/data/import:ro
+      # Fallback da auditoria (registros que o Graylog não aceitou), persistente entre reinícios (ADR-0004).
+      - keycloak-audit-fallback:/opt/keycloak/data/log
     ports:
       - "127.0.0.1:8180:8080"
       - "127.0.0.1:9100:9000"
@@ -59,3 +61,4 @@ services:
 
 volumes:
   keycloak-db-data:
+  keycloak-audit-fallback:

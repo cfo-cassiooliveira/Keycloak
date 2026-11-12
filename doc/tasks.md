@@ -91,9 +91,9 @@ Comando padrão de verificação: `scripts/build.sh` (= `./mvnw -B verify` no co
 
 ## Pendências fora do escopo (dependem de alterar outros projetos)
 
-- [ ] **P1** — Registrar `workspace-keycloak` no `sonarqube/provisioning/projects.json` + `sonar-project.properties` (JaCoCo XML)
+- [x] **P1** — (feito na 0.3.0, projeto `keycloak`) Registrar `workspace-keycloak` no `sonarqube/provisioning/projects.json` + `sonar-project.properties` (JaCoCo XML)
       e rodar o Quality Gate (Art. V.2).
-- [ ] **P2** — `docker-compose.graylog.yml` (GELF driver, tag `keycloak`) + stream, extração do JSON de auditoria e alertas
+- [x] **P2** — (feito na 0.3.0, ADR-0004) `docker-compose.graylog.yml` (GELF driver, tag `keycloak`) + stream, extração do JSON de auditoria e alertas
       (rajada de `LOGIN_ERROR`, erro do listener) no `graylog/provisioning/provision.sh`.
 - [ ] **P3** — Spec de migração dos usuários do `legado` (importação `pbkdf2-sha512`; validar se o tamanho de chave de 256 bits
       do Identity V3 é aceito pelo hash provider nativo, senão Password Hash SPI próprio).
@@ -102,7 +102,7 @@ Comando padrão de verificação: `scripts/build.sh` (= `./mvnw -B verify` no co
 
 - [x] Todos os critérios de aceite da spec cobertos por testes
 - [x] `scripts/build.sh` (com JaCoCo ≥ 80%) e `scripts/smoke-test.sh` verdes do zero
-- [ ] Quality Gate SonarQube — **pendente P1** (exceção temporária registrada no plano)
+- [x] Quality Gate SonarQube — aprovado na 0.3.0 (`./scripts/sonar-analysis.sh`)
 - [ ] Revisão via skill `code-review-qa` sem itens bloqueantes
 
 ## Revisão de código de 2026-11-12 (`code-review-qa`)
@@ -120,8 +120,24 @@ Pendentes para a próxima atualização (decisão do responsável técnico):
 - [ ] **R4** (importante) — Teste de força bruta passa com `failureFactor: 30`: espaçar tentativas além do
       `quickLoginCheckMilliSeconds` e testar o login rápido separadamente.
 - [ ] **R5** (importante) — Pipeline de CI (build, testes, E2E, scan de dependências e imagem).
-- [ ] **R6** (importante) — `trace_id`/`service_name` nos logs (tracing do Keycloak), junto com a P2 (Graylog).
+- [ ] **R6** (importante) — Parcial na 0.3.0: auditoria no Graylog já leva `service_name`, versões, ambiente e
+      `trace_id`/`span_id` quando há tracing. Falta ligar o tracing do Keycloak (OpenTelemetry) e o destino dos traces.
 - [ ] **R7** (sugestão) — Idiomas: nome acessível contendo o texto visível (WCAG 2.5.3) e chave `languages` traduzida.
 - [ ] **R8** (sugestão) — Teste para alertas `info`/`success`/`warning`, username já informado e "tentar outro jeito".
 - [ ] **R9** (nits) — `COPY realm` desnecessário no Dockerfile, senha do admin fora dos argumentos do `curl`,
       renomear `ThemeMessagesTest`, fixar versões dos plugins Maven.
+
+## Versão 0.3.0 — Logs no Graylog e Quality Gate no SonarQube (2026-11-12)
+
+- [x] **G1** — Auditoria por GELF HTTP com confirmação, envio assíncrono e fallback em arquivo com erro no container
+      (ADR-0004). Testes: unitários (`gelf/*Test`), integração com Keycloak real e Graylog falso (`WorkspaceAuditGraylogIT`).
+- [x] **G2** — Campos ricos sem dados pessoais: `event_id`, `realm_name`, `target_user_id`, versões, ambiente, host e
+      `trace_id`/`span_id` (com tracing). Testes: `AuditEventMapperTest`, `GelfMessageFactoryTest`, provider.
+- [x] **G3** — `docker-compose.graylog.yml` (auditoria HTTP, servidor e PostgreSQL pelo Docker GELF driver) e volume
+      persistente do fallback. Teste: `scripts/smoke-graylog.sh` (Graylog ok, fora e de volta) contra Graylog real.
+- [x] **G4** — Projeto `graylog`: input GELF HTTP 12202, índice `Keycloak`, pipeline do JSON do servidor, streams e
+      alertas; casos novos no smoke test do Graylog.
+- [x] **G5** — Projeto `sonarqube`: projeto `keycloak` com token; `scripts/sonar-analysis.sh` aqui. Quality Gate aprovado
+      (cobertura 94,8%, 0 bugs/vulnerabilidades/code smells/hotspots).
+- [x] **G6** — Correção nos smoke tests: login pelo formulário usava `127.0.0.1` e o Keycloak respondia
+      `cookie_not_found`; agora usa `localhost` e o teste exige o motivo real do erro.

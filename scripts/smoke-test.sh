@@ -6,7 +6,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BASE_URL="http://127.0.0.1:8180"
+# localhost (não 127.0.0.1): é o hostname do Keycloak; os cookies do login só voltam para o mesmo host.
+BASE_URL="http://localhost:8180"
 MANAGEMENT_URL="http://127.0.0.1:9100"
 REALM="workspace"
 # Usuário inexistente usado na tentativa de login: não pode aparecer em nenhum log de auditoria.
@@ -35,7 +36,7 @@ failed_form_login() {
   local jar="${work_dir}/cookies" page action
   page="$(curl -fs -c "$jar" -b "$jar" -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
     --data-urlencode "client_id=account-console" --data-urlencode "response_type=code" \
-    --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${BASE_URL/127.0.0.1/localhost}/realms/${REALM}/account/" \
+    --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${BASE_URL}/realms/${REALM}/account/" \
     --data-urlencode "code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" \
     --data-urlencode "code_challenge_method=S256")"
   action="$(grep -o 'action="[^"]*"' <<<"$page" | head -1 | sed -e 's/^action="//' -e 's/"$//' -e 's/&amp;/\&/g')"
@@ -79,7 +80,7 @@ check "provider workspace-audit carregado no servidor" "$(contains "$server_info
 echo "== Tema"
 login_page="$(curl -fs -H 'Accept-Language: pt-BR' -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
   --data-urlencode "client_id=account-console" --data-urlencode "response_type=code" \
-  --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${BASE_URL/127.0.0.1/localhost}/realms/${REALM}/account/" \
+  --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${BASE_URL}/realms/${REALM}/account/" \
   --data-urlencode "code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" \
   --data-urlencode "code_challenge_method=S256")"
 check "tela de login carrega o CSS do tema workspace" "$(contains "$login_page" '/login/workspace/css/workspace.css')"
@@ -89,12 +90,19 @@ echo "== Auditoria"
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 failed_form_login
 sleep 2
-audit_logs="$(docker compose logs --no-log-prefix --since "$since" keycloak 2>/dev/null | grep '"loggerName":"workspace.audit"' || true)"
-check "LOGIN_ERROR registrado no log de auditoria" "$(contains "$audit_logs" 'LOGIN_ERROR')"
-check "LOGIN_ERROR registrado em nível WARN" \
-  "$(grep 'LOGIN_ERROR' <<<"$audit_logs" | grep -q '"level":"WARN"' && echo true || echo false)"
-check "log de auditoria não contém o username digitado" \
-  "$(grep -q -- "$PROBE_USERNAME" <<<"$audit_logs" && echo false || echo true)"
+if docker compose exec -T keycloak printenv KC_SPI_EVENTS_LISTENER__WORKSPACE_AUDIT__GRAYLOG_URL >/dev/null 2>&1; then
+  # Com o overlay do Graylog a auditoria vai para o Graylog (com fallback), não para o console.
+  echo "ℹ️  Auditoria configurada para o Graylog: verificada por ./scripts/smoke-graylog.sh"
+else
+  audit_logs="$(docker compose logs --no-log-prefix --since "$since" keycloak 2>/dev/null | grep '"loggerName":"workspace.audit"' || true)"
+  check "LOGIN_ERROR registrado no log de auditoria" "$(contains "$audit_logs" 'LOGIN_ERROR')"
+  # O login chegou a validar a credencial (sem cookie, o erro seria cookie_not_found).
+  check "LOGIN_ERROR com o motivo real (user_not_found)" "$(contains "$audit_logs" '\\"error\\":\\"user_not_found\\"')"
+  check "LOGIN_ERROR registrado em nível WARN" \
+    "$(grep 'LOGIN_ERROR' <<<"$audit_logs" | grep -q '"level":"WARN"' && echo true || echo false)"
+  check "log de auditoria não contém o username digitado" \
+    "$(grep -q -- "$PROBE_USERNAME" <<<"$audit_logs" && echo false || echo true)"
+fi
 check "nenhum log do servidor contém o username digitado" \
   "$(docker compose logs --since "$since" keycloak 2>/dev/null | grep -q -- "$PROBE_USERNAME" && echo false || echo true)"
 

@@ -1,0 +1,36 @@
+# Integração com o Graylog (projeto C:\Workspace\graylog). Requer o Graylog de pé antes.
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
+#
+# - Auditoria (login, falhas, ações administrativas): o listener workspace-audit envia GELF HTTP para
+#   graylog:12202 pela rede Docker "observability", com confirmação de recebimento. Se o Graylog não aceitar,
+#   o registro vai para o volume keycloak-audit-fallback e o container informa o erro (ADR-0004).
+# - Logs do servidor (startup, erros) e do PostgreSQL: Docker logging driver GELF (UDP), como nos outros projetos.
+#   O Docker mantém cópia local ("docker compose logs" continua funcionando com o Graylog fora do ar).
+#   Use 127.0.0.1 (não "localhost"): o daemon resolve localhost para ::1 (IPv6) e a porta é publicada só em IPv4.
+#   A "tag" vira o service_name no pipeline do Graylog e define o stream de destino.
+services:
+  keycloak:
+    environment:
+      KC_SPI_EVENTS_LISTENER__WORKSPACE_AUDIT__GRAYLOG_URL: http://graylog:12202/gelf
+      KC_SPI_EVENTS_LISTENER__WORKSPACE_AUDIT__ENVIRONMENT: local
+    networks:
+      - default
+      - observability
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: keycloak-server
+
+  postgres:
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: keycloak-db
+
+networks:
+  observability:
+    # Criada pelo docker-compose do projeto graylog.
+    external: true

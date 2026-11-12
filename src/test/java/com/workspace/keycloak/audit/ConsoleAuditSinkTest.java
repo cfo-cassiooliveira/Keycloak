@@ -14,14 +14,14 @@ import java.util.Map;
 import org.jboss.logging.Logger;
 import org.junit.jupiter.api.Test;
 
-class AuditLogWriterTest {
+class ConsoleAuditSinkTest {
 
     private final Logger logger = mock(Logger.class);
-    private final AuditLogWriter writer = new AuditLogWriter(logger);
+    private final ConsoleAuditSink sink = new ConsoleAuditSink(logger);
 
     @Test
     void write_WhenLevelIsInfo_LogsSingleLineJsonAtInfo() {
-        writer.write(new AuditRecord(AuditLevel.INFO, fields("LOGIN")));
+        sink.write(new AuditRecord(AuditLevel.INFO, fields("LOGIN")));
 
         verify(logger).info("{\"audit_schema\":1,\"type\":\"LOGIN\"}");
         verify(logger, never()).warn(any());
@@ -29,19 +29,10 @@ class AuditLogWriterTest {
 
     @Test
     void write_WhenLevelIsWarn_LogsJsonAtWarn() {
-        writer.write(new AuditRecord(AuditLevel.WARN, fields("LOGIN_ERROR")));
+        sink.write(new AuditRecord(AuditLevel.WARN, fields("LOGIN_ERROR")));
 
         verify(logger).warn("{\"audit_schema\":1,\"type\":\"LOGIN_ERROR\"}");
         verify(logger, never()).info(any());
-    }
-
-    @Test
-    void writeFailure_LogsErrorWithExceptionAndFixedMessage() {
-        IllegalStateException failure = new IllegalStateException("boom");
-
-        writer.writeFailure(failure);
-
-        verify(logger).error("Failed to write audit record", failure);
     }
 
     @Test
@@ -49,16 +40,16 @@ class AuditLogWriterTest {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("invalid", new UnserializableValue());
 
-        assertThatThrownBy(() -> writer.write(new AuditRecord(AuditLevel.INFO, fields)))
+        assertThatThrownBy(() -> sink.write(new AuditRecord(AuditLevel.INFO, fields)))
                 .isInstanceOf(UncheckedIOException.class);
         verify(logger, never()).info(anyString());
     }
 
-    // O Jackson converte a exceção do getter em JsonMappingException (IOException).
-    static final class UnserializableValue {
-        public String getValue() {
-            throw new IllegalStateException("not serializable");
-        }
+    @Test
+    void close_HasNothingPendingAndDoesNotLog() {
+        sink.close();
+
+        verify(logger, never()).info(any());
     }
 
     private static Map<String, Object> fields(String type) {
@@ -66,5 +57,12 @@ class AuditLogWriterTest {
         fields.put("audit_schema", 1);
         fields.put("type", type);
         return fields;
+    }
+
+    // O Jackson converte a exceção do getter em JsonMappingException (IOException).
+    static final class UnserializableValue {
+        public String getValue() {
+            throw new IllegalStateException("not serializable");
+        }
     }
 }
