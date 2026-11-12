@@ -1,0 +1,11 @@
+# Fim de linha LF em todo o repositório: scripts e configs rodam dentro de containers Linux.
+* text=auto eol=lf
+
+# Scripts do Windows precisam de CRLF.
+*.cmd text eol=crlf
+
+# Binários: sem conversão.
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary

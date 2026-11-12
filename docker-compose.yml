@@ -1,0 +1,61 @@
+# Keycloak do Workspace (ambiente local). Antes da primeira subida: ./scripts/generate-env.sh
+# Uso: docker compose up -d --build && ./scripts/smoke-test.sh
+# Portas só em 127.0.0.1: 8180 (login/OIDC/Admin Console) e 9100 (health/metrics). 9000/9001 são do Graylog/SonarQube.
+name: keycloak
+
+services:
+  postgres:
+    image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?KC_DB_PASSWORD ausente. Rode ./scripts/generate-env.sh}
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    build: .
+    image: workspace-keycloak:0.2.0
+    # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
+    command: ["start", "--optimized", "--import-realm"]
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?KC_DB_PASSWORD ausente. Rode ./scripts/generate-env.sh}
+      # Admin temporário do realm master; troque por um admin permanente com MFA (README).
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?KC_BOOTSTRAP_ADMIN_USERNAME ausente. Rode ./scripts/generate-env.sh}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
+      # HTTP só no ambiente local; fora dele o Keycloak fica atrás de proxy TLS (proxy-headers=xforwarded).
+      KC_HOSTNAME: http://localhost:8180
+      KC_HTTP_ENABLED: "true"
+      KC_LOG_CONSOLE_OUTPUT: json
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8180:8080"
+      - "127.0.0.1:9100:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # A imagem não tem curl: usa /dev/tcp do bash na porta de gerenciamento.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q 'HTTP/1.1 200' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  keycloak-db-data:

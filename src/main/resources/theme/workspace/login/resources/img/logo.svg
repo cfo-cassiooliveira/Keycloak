@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CFO">
+  <!-- Monograma CFO: cada letra em uma cor da paleta (céu, pervinca e água) sobre o índigo. Formas geométricas,
+       sem fonte, para renderizar igual em qualquer navegador. -->
+  <rect width="64" height="64" rx="14" fill="#262a6b"/>
+  <g fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.8 26.7A7.5 7.5 0 1 0 20.8 37.3" stroke="#7fc1ef"/>
+    <path d="M27.5 39.5V24.5H35M27.5 32H33.5" stroke="#7f88ef"/>
+    <circle cx="48.5" cy="32" r="7.5" stroke="#80ebe0"/>
+  </g>
+</svg>

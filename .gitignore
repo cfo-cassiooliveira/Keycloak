@@ -1,0 +1,17 @@
+# Segredos locais (gerados por scripts/generate-env.sh)
+.env
+
+# Build Maven
+target/
+
+# Ferramentas locais
+.serena/
+.playwright-mcp/
+.idea/
+.vscode/
+*.iml
+
+# Testes E2E (Playwright)
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
