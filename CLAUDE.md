@@ -28,7 +28,8 @@
 ## Estrutura
 
 ```
-src/main/java/com/workspace/keycloak/audit/   Event Listener SPI (mapper puro + writer + provider/factory)
+src/main/java/com/workspace/keycloak/audit/   Event Listener SPI (mapper puro, AuditSink: console ou Graylog, provider/factory)
+src/main/java/com/workspace/keycloak/audit/gelf/  GELF HTTP para o Graylog, fila assíncrona e fallback em arquivo (ADR-0004)
 src/main/resources/theme/workspace/login/     Tema de login (CSS, logo, mensagens pt_BR/en)
 src/main/resources/META-INF/                  Registro de providers (services) e temas
 src/test/java/                                *Test (unitário) e *IT (Keycloak real via test-framework)
@@ -47,11 +48,17 @@ doc/                                          spec, plano, tarefas e ADRs
 docker compose up -d --build           # sobe PostgreSQL + Keycloak (127.0.0.1:8180, mgmt 127.0.0.1:9100)
 ./scripts/smoke-test.sh                # valida o ambiente de pé (--skip-restart para pular o reinício)
 ./scripts/e2e.sh                       # E2E do tema com Playwright em container (ambiente de pé)
+./scripts/sonar-analysis.sh            # Quality Gate no SonarQube local (projeto keycloak; falha se reprovar)
+docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # com Graylog
+./scripts/smoke-graylog.sh             # Graylog ok, fora (fallback + erro no container) e de volta (alerta)
 ```
 
 ## Regras que não podem regredir
 
-- Auditoria só com campos da allowlist (`AuditEventMapper`); campo novo exige revisão de LGPD e teste.
+- Auditoria só com campos da allowlist (`AuditEventMapper`); campo novo exige revisão de LGPD e teste. Usuário só
+  pelo id técnico (`user_id`, `target_user_id`, `actor_user_id`); nunca username, e-mail, IP ou sessão.
+- Nenhum registro de auditoria se perde: falha no Graylog vai para o fallback em arquivo e o container loga o erro;
+  o envio ao Graylog é assíncrono e nunca atrasa o login (ADR-0004).
 - O listener nunca propaga exceção para o fluxo de login.
 - Realm sem `jboss-logging`, com `eventsEnabled=false`, PKCE S256 por client policy, `admin-cli` sem password grant,
   brute force e política de senha ativos (cobertos por `WorkspaceRealmIT`).
@@ -63,3 +70,4 @@ docker compose up -d --build           # sobe PostgreSQL + Keycloak (127.0.0.1:8
 - ADR-0001: extensões em Java 21 + Maven, build/testes em container.
 - ADR-0002: auditoria de eventos sem dados pessoais.
 - ADR-0003: tema de login em Bootstrap 5 sobre o tema `base`.
+- ADR-0004: logs no Graylog (auditoria por GELF HTTP com fallback local; servidor pelo Docker GELF driver).

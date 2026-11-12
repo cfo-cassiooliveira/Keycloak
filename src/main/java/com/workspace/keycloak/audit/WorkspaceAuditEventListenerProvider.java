@@ -2,9 +2,13 @@ package com.workspace.keycloak.audit;
 
 import java.util.function.Supplier;
 
+import org.jboss.logging.Logger;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
 import org.keycloak.events.admin.AdminEvent;
+
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 
 /**
  * Listener de eventos que registra auditoria sem dados pessoais.
@@ -13,11 +17,13 @@ import org.keycloak.events.admin.AdminEvent;
 public final class WorkspaceAuditEventListenerProvider implements EventListenerProvider {
 
     private final AuditEventMapper mapper;
-    private final AuditLogWriter writer;
+    private final AuditSink sink;
+    private final Logger failureLogger;
 
-    public WorkspaceAuditEventListenerProvider(AuditEventMapper mapper, AuditLogWriter writer) {
+    public WorkspaceAuditEventListenerProvider(AuditEventMapper mapper, AuditSink sink, Logger failureLogger) {
         this.mapper = mapper;
-        this.writer = writer;
+        this.sink = sink;
+        this.failureLogger = failureLogger;
     }
 
     @Override
@@ -38,9 +44,19 @@ public final class WorkspaceAuditEventListenerProvider implements EventListenerP
 
     private void writeSafely(Supplier<AuditRecord> auditRecord) {
         try {
-            writer.write(auditRecord.get());
+            sink.write(withTrace(auditRecord.get()));
         } catch (RuntimeException e) {
-            writer.writeFailure(e);
+            failureLogger.error("Failed to write audit record", e);
         }
+    }
+
+    // Correlação com a requisição (W3C Trace Context) quando o tracing do Keycloak está ligado; capturada aqui
+    // porque o envio ao Graylog acontece em outra thread, fora do contexto da requisição.
+    private static AuditRecord withTrace(AuditRecord auditRecord) {
+        SpanContext span = Span.current().getSpanContext();
+        if (!span.isValid()) {
+            return auditRecord;
+        }
+        return auditRecord.withField("trace_id", span.getTraceId()).withField("span_id", span.getSpanId());
     }
 }

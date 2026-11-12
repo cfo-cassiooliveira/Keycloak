@@ -10,13 +10,15 @@ COPY src src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests
 
 # 2) Copia o JAR para providers/ e aplica as opções de build (kc.sh build).
+#    Cria data/log (dono: keycloak) para o volume do fallback de auditoria nascer gravável.
 FROM quay.io/keycloak/keycloak:26.8.2@sha256:723b1d6e254c0fc96d5cffec860c7e0744d6a3277822b865bb538cf891575e41 AS builder
 ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true \
     KC_METRICS_ENABLED=true \
     KC_CACHE=local
 COPY --from=extensions /build/target/workspace-keycloak-extensions-*.jar /opt/keycloak/providers/
-RUN /opt/keycloak/bin/kc.sh build
+RUN /opt/keycloak/bin/kc.sh build \
+    && mkdir -p /opt/keycloak/data/log
 
 # 3) Imagem final já otimizada: o start não recompila (start --optimized).
 FROM quay.io/keycloak/keycloak:26.8.2@sha256:723b1d6e254c0fc96d5cffec860c7e0744d6a3277822b865bb538cf891575e41

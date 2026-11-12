@@ -7,7 +7,7 @@
 
     <groupId>com.workspace.keycloak</groupId>
     <artifactId>workspace-keycloak-extensions</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <packaging>jar</packaging>
     <name>Workspace Keycloak Extensions</name>
 
@@ -21,6 +21,7 @@
         <!-- CSS do tema de login (WebJar); extraído para o tema no build, nunca copiado para o repositório. -->
         <bootstrap.version>5.3.8</bootstrap.version>
         <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
         <jacoco.version>0.8.13</jacoco.version>
         <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
         <!-- Argumentos exigidos pelo keycloak-test-framework (doc GETTING_STARTED do test-framework). -->
@@ -73,6 +74,12 @@
             <artifactId>jboss-logging</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- Contexto de tracing (trace_id/span_id) da requisição; fornecido pelo Keycloak em runtime. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.keycloak.testframework</groupId>
@@ -93,6 +100,11 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -126,6 +138,19 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${maven-jar-plugin.version}</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <!-- Implementation-Version vira o service_version dos logs enviados ao Graylog. -->
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>${maven-dependency-plugin.version}</version>
                 <executions>
@@ -141,6 +166,8 @@
                                     <groupId>org.webjars.npm</groupId>
                                     <artifactId>bootstrap</artifactId>
                                     <version>${bootstrap.version}</version>
+                                    <!-- Extrai sempre: a marcação do plugin sobrevive quando IDE/clean apagam target/classes. -->
+                                    <overWrite>true</overWrite>
                                     <includes>META-INF/resources/webjars/bootstrap/${bootstrap.version}/dist/css/bootstrap.min.css,META-INF/resources/webjars/bootstrap/${bootstrap.version}/LICENSE</includes>
                                     <fileMappers>
                                         <org.codehaus.plexus.components.io.filemappers.FlattenFileMapper/>

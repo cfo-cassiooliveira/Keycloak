@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.keycloak.events.Event;
 import org.keycloak.events.admin.AdminEvent;
@@ -14,7 +16,8 @@ import org.keycloak.events.admin.AuthDetails;
  *
  * <p>Usa lista de permissão (allowlist): qualquer campo não listado aqui é descartado,
  * inclusive campos que versões futuras do Keycloak venham a adicionar (ADR-0002).
- * Username, e-mail, IP, id de sessão, representação e caminho de recurso nunca saem.</p>
+ * Username, e-mail, IP, id de sessão, representação e caminho de recurso nunca saem; do caminho, só o UUID
+ * do usuário afetado (código técnico, LGPD).</p>
  */
 public final class AuditEventMapper {
 
@@ -26,10 +29,16 @@ public final class AuditEventMapper {
 
     private static final String ERROR_SUFFIX = "_ERROR";
 
+    // Só o UUID do usuário afetado sai do caminho do recurso; o restante do caminho pode conter nomes.
+    private static final Pattern USER_RESOURCE_PATH = Pattern.compile(
+            "^users/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:/.*)?$");
+
     public AuditRecord map(Event event) {
         Map<String, Object> fields = newFields("user");
+        put(fields, "event_id", event.getId());
         put(fields, "type", event.getType().name());
         put(fields, "realm_id", event.getRealmId());
+        put(fields, "realm_name", event.getRealmName());
         put(fields, "client_id", event.getClientId());
         put(fields, "user_id", event.getUserId());
         put(fields, "error", event.getError());
@@ -46,9 +55,12 @@ public final class AuditEventMapper {
 
     public AuditRecord map(AdminEvent event) {
         Map<String, Object> fields = newFields("admin");
+        put(fields, "event_id", event.getId());
         put(fields, "operation", event.getOperationType().name());
         put(fields, "resource_type", event.getResourceTypeAsString());
         put(fields, "realm_id", event.getRealmId());
+        put(fields, "realm_name", event.getRealmName());
+        put(fields, "target_user_id", targetUserId(event.getResourcePath()));
         AuthDetails actor = event.getAuthDetails();
         if (actor != null) {
             put(fields, "actor_user_id", actor.getUserId());
@@ -73,6 +85,14 @@ public final class AuditEventMapper {
         if (value != null) {
             fields.put(key, value);
         }
+    }
+
+    private static String targetUserId(String resourcePath) {
+        if (resourcePath == null) {
+            return null;
+        }
+        Matcher matcher = USER_RESOURCE_PATH.matcher(resourcePath);
+        return matcher.matches() ? matcher.group(1) : null;
     }
 
     private static String toUtc(long epochMillis) {

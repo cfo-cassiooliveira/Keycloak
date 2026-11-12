@@ -16,4 +16,14 @@ public record AuditRecord(AuditLevel level, Map<String, Object> fields) {
         // Cópia defensiva preservando a ordem para o JSON sair estável.
         fields = Collections.unmodifiableMap(new LinkedHashMap<>(fields));
     }
+
+    /** Devolve uma cópia com o campo acrescentado; valor nulo devolve o próprio registro. */
+    public AuditRecord withField(String name, Object value) {
+        if (value == null) {
+            return this;
+        }
+        Map<String, Object> copy = new LinkedHashMap<>(fields);
+        copy.put(name, value);
+        return new AuditRecord(level, copy);
+    }
 }
