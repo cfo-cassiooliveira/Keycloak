@@ -1,0 +1,10 @@
+# Exceções da varredura de vulnerabilidades (Trivy). Cada entrada tem justificativa e prazo: ao expirar, o CI volta
+# a falhar e a decisão precisa ser revista (ADR-0005).
+vulnerabilities:
+  - id: CVE-2026-102554
+    paths:
+      - "opt/keycloak/lib/lib/main/com.google.guava.guava-33.6.0-jre.jar"
+    statement: >-
+      Guava empacotado na imagem oficial do Keycloak 26.8.2 (corrigido no Guava 33.7.2). Não há Keycloak com a
+      correção em 2026-11-12; não alteramos bibliotecas internas da imagem oficial. Rever no próximo upgrade do Keycloak.
+    expired_at: 2026-12-12

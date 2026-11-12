@@ -32,11 +32,13 @@ wait_ready() {
 }
 
 # Faz o login pelo formulário (fluxo real do navegador) com usuário inexistente.
+# Uso: failed_form_login [realm] [client] [redirect_uri]   (padrão: realm do Workspace pela Account Console)
 failed_form_login() {
-  local jar="${work_dir}/cookies" page action
-  page="$(curl -fs -c "$jar" -b "$jar" -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
-    --data-urlencode "client_id=account-console" --data-urlencode "response_type=code" \
-    --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${BASE_URL}/realms/${REALM}/account/" \
+  local realm="${1:-$REALM}" client="${2:-account-console}" redirect="${3:-${BASE_URL}/realms/${REALM}/account/}"
+  local jar="${work_dir}/cookies-${realm}" page action
+  page="$(curl -fs -c "$jar" -b "$jar" -G "${BASE_URL}/realms/${realm}/protocol/openid-connect/auth" \
+    --data-urlencode "client_id=${client}" --data-urlencode "response_type=code" \
+    --data-urlencode "scope=openid" --data-urlencode "redirect_uri=${redirect}" \
     --data-urlencode "code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" \
     --data-urlencode "code_challenge_method=S256")"
   action="$(grep -o 'action="[^"]*"' <<<"$page" | head -1 | sed -e 's/^action="//' -e 's/"$//' -e 's/&amp;/\&/g')"
@@ -66,16 +68,32 @@ echo "== Realm e providers"
 check "realm ${REALM} publica a configuração OIDC" \
   "$(curl -fs -o /dev/null -w '%{http_code}' "${BASE_URL}/realms/${REALM}/.well-known/openid-configuration" | grep -q 200 && echo true || echo false)"
 
-token_response="$(curl -fs "${BASE_URL}/realms/master/protocol/openid-connect/token" \
-  --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
-  --data-urlencode "username=${KC_BOOTSTRAP_ADMIN_USERNAME}" --data-urlencode "password=${KC_BOOTSTRAP_ADMIN_PASSWORD}")"
-admin_token="$(grep -o '"access_token":"[^"]*"' <<<"$token_response" | cut -d'"' -f4)"
+# Conta de serviço criada pelo provisioner (client credentials); o segredo vai pela entrada padrão, sem quebra de linha.
+admin_token="$(printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
+  | curl -fs "${BASE_URL}/realms/master/protocol/openid-connect/token" \
+    --data-urlencode "grant_type=client_credentials" --data-urlencode "client_id=workspace-automation" \
+    --data-urlencode "client_secret@-" \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true)"
+check "conta de serviço workspace-automation obtém token (client credentials)" "$([[ -n "$admin_token" ]] && echo true || echo false)"
 realm_json="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/${REALM}")"
 check "realm usa só o listener workspace-audit" "$(contains "$realm_json" '"eventsListeners":\["workspace-audit"\]')"
-check "realm não grava eventos de usuário no banco" "$(contains "$realm_json" '"eventsEnabled":false')"
+check "realm não grava eventos nem ações administrativas no banco" \
+  "$([[ "$(contains "$realm_json" '"eventsEnabled":false')" == true && "$(contains "$realm_json" '"adminEventsEnabled":false')" == true ]] && echo true || echo false)"
 check "realm usa o tema de login workspace" "$(contains "$realm_json" '"loginTheme":"workspace"')"
 server_info="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/serverinfo")"
 check "provider workspace-audit carregado no servidor" "$(contains "$server_info" '"workspace-audit"')"
+
+echo "== Realm master (provisioner)"
+master_json="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/master")"
+check "master audita pelo workspace-audit (sem o jboss-logging, que grava username e IP)" \
+  "$(contains "$master_json" '"eventsListeners":\["workspace-audit"\]')"
+check "master com proteção contra força bruta" "$(contains "$master_json" '"bruteForceProtected":true')"
+ropc_response="$(curl -s "${BASE_URL}/realms/master/protocol/openid-connect/token" \
+  --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
+  --data-urlencode "username=smoke.ropc" --data-urlencode "password=x")"
+check "admin-cli do master recusa password grant" "$(contains "$ropc_response" 'unauthorized_client')"
+check "provisioner é idempotente (reexecução sem erro)" \
+  "$(docker compose run --rm provisioner >/dev/null 2>&1 && echo true || echo false)"
 
 echo "== Tema"
 login_page="$(curl -fs -H 'Accept-Language: pt-BR' -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
@@ -89,6 +107,8 @@ check "tela de login em PT-BR" "$(contains "$login_page" 'Entrar no Workspace')"
 echo "== Auditoria"
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 failed_form_login
+# Também no master (admins): o jboss-logging padrão gravaria o username no log do servidor (LGPD).
+failed_form_login master security-admin-console "${BASE_URL}/admin/master/console/"
 sleep 2
 if docker compose exec -T keycloak printenv KC_SPI_EVENTS_LISTENER__WORKSPACE_AUDIT__GRAYLOG_URL >/dev/null 2>&1; then
   # Com o overlay do Graylog a auditoria vai para o Graylog (com fallback), não para o console.
@@ -103,7 +123,7 @@ else
   check "log de auditoria não contém o username digitado" \
     "$(grep -q -- "$PROBE_USERNAME" <<<"$audit_logs" && echo false || echo true)"
 fi
-check "nenhum log do servidor contém o username digitado" \
+check "nenhum log do servidor contém o username digitado (realm do Workspace e master)" \
   "$(docker compose logs --since "$since" keycloak 2>/dev/null | grep -q -- "$PROBE_USERNAME" && echo false || echo true)"
 
 if [[ "${1:-}" != "--skip-restart" ]]; then

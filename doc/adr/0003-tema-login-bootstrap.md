@@ -45,5 +45,5 @@ pervinca `#7F88EF`, água `#80EBE0`) e o logo CFO.
 - **Positivas**: telas responsivas e consistentes; dependências fixadas e sem chamadas externas; erro mostrado no campo.
 - **Negativas / riscos**: templates próprios precisam ser revisados a cada upgrade do Keycloak (comparar com o `base`
   da nova versão); esquecer de incrementar a versão deixa usuários com CSS antigo por até 30 dias.
-- **Ações decorrentes**: testes de tema (`ThemeMessagesTest`, `WorkspaceRealmIT`) cobrem herança, Bootstrap extraído,
+- **Ações decorrentes**: testes de tema (`WorkspaceThemeResourcesTest`, `WorkspaceRealmIT`, Vitest em `theme-tests/unit`) cobrem herança, Bootstrap extraído,
   recursos servidos, versão filtrada, classes do Bootstrap e erro junto ao campo.

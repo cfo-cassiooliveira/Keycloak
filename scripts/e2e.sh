@@ -16,9 +16,10 @@ fi
 
 # node_modules fica num volume Docker (não polui o repositório); npm ci respeita o package-lock.json.
 MSYS_NO_PATHCONV=1 docker run --rm --ipc=host \
-  -v "${host_dir}/e2e:/e2e" \
-  -v keycloak-e2e-node-modules:/e2e/node_modules \
-  -w /e2e \
+  -v "${host_dir}:/workspace" \
+  -v keycloak-theme-tests-node-modules:/workspace/theme-tests/node_modules \
+  -w /workspace/theme-tests \
+  --add-host=host.docker.internal:host-gateway \
   -e E2E_FORWARD_TO=host.docker.internal:8180 \
   "$PLAYWRIGHT_IMAGE" \
   bash -c 'npm ci --no-audit --no-fund --loglevel=error && npx playwright test "$@"' -- "$@"

@@ -36,7 +36,7 @@
     "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR", "CODE_TO_TOKEN_ERROR",
     "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR", "REGISTER", "REGISTER_ERROR", "CLIENT_LOGIN_ERROR"
   ],
-  "adminEventsEnabled": true,
+  "adminEventsEnabled": false,
   "adminEventsDetailsEnabled": false,
 
   "clients": [

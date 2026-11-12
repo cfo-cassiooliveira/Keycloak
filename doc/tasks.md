@@ -113,18 +113,18 @@ Comando padrão de verificação: `scripts/build.sh` (= `./mvnw -B verify` no co
 
 Pendentes para a próxima atualização (decisão do responsável técnico):
 
-- [ ] **R2** (importante) — Admin events gravados no banco com IP e sem expiração: desligar a gravação se o listener
+- [x] **R2** (importante) — Admin events gravados no banco com IP e sem expiração: desligar a gravação se o listener
       continuar recebendo os eventos, ou definir `adminEventsExpiration` e registrar a retenção no ADR-0002.
-- [ ] **R3** (importante) — Endurecer o realm `master`: listener `workspace-audit` no lugar do `jboss-logging` (vaza
+- [x] **R3** (importante) — Endurecer o realm `master`: listener `workspace-audit` no lugar do `jboss-logging` (vaza
       username e IP em `LOGIN_ERROR`), client de serviço para automação e smoke test sem password grant.
-- [ ] **R4** (importante) — Teste de força bruta passa com `failureFactor: 30`: espaçar tentativas além do
+- [x] **R4** (importante) — Teste de força bruta passa com `failureFactor: 30`: espaçar tentativas além do
       `quickLoginCheckMilliSeconds` e testar o login rápido separadamente.
-- [ ] **R5** (importante) — Pipeline de CI (build, testes, E2E, scan de dependências e imagem).
-- [ ] **R6** (importante) — Parcial na 0.3.0: auditoria no Graylog já leva `service_name`, versões, ambiente e
+- [x] **R5** (importante) — Pipeline de CI (build, testes, E2E, scan de dependências e imagem).
+- [x] **R6** (importante) — Decidido na 0.3.1 (ADR-0004, item 12): não ligar tracing sem backend de traces. Parcial na 0.3.0: auditoria no Graylog já leva `service_name`, versões, ambiente e
       `trace_id`/`span_id` quando há tracing. Falta ligar o tracing do Keycloak (OpenTelemetry) e o destino dos traces.
-- [ ] **R7** (sugestão) — Idiomas: nome acessível contendo o texto visível (WCAG 2.5.3) e chave `languages` traduzida.
-- [ ] **R8** (sugestão) — Teste para alertas `info`/`success`/`warning`, username já informado e "tentar outro jeito".
-- [ ] **R9** (nits) — `COPY realm` desnecessário no Dockerfile, senha do admin fora dos argumentos do `curl`,
+- [x] **R7** (sugestão) — Idiomas: nome acessível contendo o texto visível (WCAG 2.5.3) e chave `languages` traduzida.
+- [x] **R8** (sugestão) — Teste para alertas `info`/`success`/`warning`, username já informado e "tentar outro jeito".
+- [x] **R9** (nits) — `COPY realm` desnecessário no Dockerfile, senha do admin fora dos argumentos do `curl`,
       renomear `ThemeMessagesTest`, fixar versões dos plugins Maven.
 
 ## Versão 0.3.0 — Logs no Graylog e Quality Gate no SonarQube (2026-11-12)
@@ -141,3 +141,20 @@ Pendentes para a próxima atualização (decisão do responsável técnico):
       (cobertura 94,8%, 0 bugs/vulnerabilidades/code smells/hotspots).
 - [x] **G6** — Correção nos smoke tests: login pelo formulário usava `127.0.0.1` e o Keycloak respondia
       `cookie_not_found`; agora usa `localhost` e o teste exige o motivo real do erro.
+
+## Versão 0.3.1 — Correções da revisão de 2026-11-12 (segunda rodada)
+
+- [x] **B1** (bloqueante) — Username do realm `master` chegava ao Graylog: `jboss-logging` em `trace`, master com
+      `workspace-audit` pelo `provisioner`, descarte do logger `org.keycloak.events` no Graylog. Testes: `smoke-test.sh`,
+      `smoke-graylog.sh` (username ausente no log e no Graylog) e smoke do Graylog (descarte).
+- [x] **I2** — `scripts/replay-fallback.sh` (renomeação atômica, 202 por linha, retoma lote interrompido). Teste:
+      `smoke-graylog.sh` (registro da queda chega ao Graylog, fallback vazio).
+- [x] **I3** — SonarQube analisa o tema (JS/CSS) com cobertura do Vitest (`theme-tests/unit`, 100% do `workspace.js`);
+      scripts pelo ShellCheck no CI.
+- [x] **S4/S6** — Riscos da fila em memória e da origem do GELF HTTP aceitos e registrados (ADR-0004);
+      `stop_grace_period: 30s`.
+- [x] **S5** — Retenção do fallback: reenvio descarta o que passou de 30 dias. Teste: `smoke-graylog.sh`.
+- [x] **S7** — `GraylogSettings` falha na subida com URL, timeout ou fila inválidos. Teste: `GraylogSettingsTest`.
+- [x] **N8** — Segredos e senhas dos scripts por stdin/arquivo, não por argumento.
+- [x] **Extra** — Realm `workspace` reconciliado pelo provisioner (o `--import-realm` não altera realm existente);
+      scripts com bit de execução no git; exceção do Guava (CVE-2026-102554) com prazo no `.trivyignore.yaml` (ADR-0005).

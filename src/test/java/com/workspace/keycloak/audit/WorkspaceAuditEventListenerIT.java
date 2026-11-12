@@ -137,7 +137,8 @@ class WorkspaceAuditEventListenerIT {
             return realm
                     .setEventsListeners(List.of(WorkspaceAuditEventListenerProviderFactory.PROVIDER_ID))
                     .eventsEnabled(false)
-                    .adminEventsEnabled(true)
+                    // Não grava ações administrativas no banco (guardariam o IP); o listener recebe assim mesmo (R2).
+                    .adminEventsEnabled(false)
                     .adminEventsDetailsEnabled(false)
                     .clients(ClientBuilder.create(CLIENT_ID).publicClient().directAccessGrantsEnabled())
                     .users(UserBuilder.create(USERNAME)

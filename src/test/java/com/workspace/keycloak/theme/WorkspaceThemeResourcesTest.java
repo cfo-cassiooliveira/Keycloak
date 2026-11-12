@@ -10,8 +10,8 @@ import java.util.Properties;
 
 import org.junit.jupiter.api.Test;
 
-/** Garante que o tema de login tem os mesmos textos em todos os idiomas suportados (US-03). */
-class ThemeMessagesTest {
+/** Recursos do tema de login: textos nos idiomas suportados, herança, Bootstrap, fonte e versão dos recursos. */
+class WorkspaceThemeResourcesTest {
 
     private static final String MESSAGES_PATH = "/theme/workspace/login/messages/";
 
@@ -67,7 +67,7 @@ class ThemeMessagesTest {
     }
 
     private static InputStream resource(String path) {
-        InputStream stream = ThemeMessagesTest.class.getResourceAsStream(path);
+        InputStream stream = WorkspaceThemeResourcesTest.class.getResourceAsStream(path);
         assertThat(stream).as("resource %s", path).isNotNull();
         return stream;
     }

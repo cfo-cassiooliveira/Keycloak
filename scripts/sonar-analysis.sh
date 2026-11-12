@@ -26,6 +26,12 @@ fi
 # O token vai por variável de ambiente herdada (-e SONAR_TOKEN), nunca na linha de comando do docker run.
 export SONAR_TOKEN
 
+# Cobertura do JavaScript do tema (lcov do Vitest); sem ela o JS entraria no Quality Gate com 0%.
+rm -rf "${project_root}/theme-tests/coverage"
+"${project_root}/scripts/theme-unit.sh"
+
+# Fontes analisados: Java, POM e o tema (JS/CSS). Templates FTL não têm analisador no SonarQube; são cobertos pelos
+# testes de integração e E2E. Scripts shell são verificados pelo ShellCheck no CI.
 MSYS_NO_PATHCONV=1 docker run --rm \
   -e SONAR_TOKEN \
   -v "${host_dir}:/workspace" \
@@ -36,5 +42,9 @@ MSYS_NO_PATHCONV=1 docker run --rm \
     -Dsonar.host.url="${SONAR_HOST_URL}" \
     -Dsonar.projectKey="${PROJECT_KEY}" \
     -Dsonar.projectName="Keycloak" \
+    -Dsonar.sources=pom.xml,src/main/java,src/main/resources/theme \
+    -Dsonar.tests=src/test/java,theme-tests/unit,theme-tests/e2e \
+    -Dsonar.exclusions="**/fonts/**,**/img/**" \
+    -Dsonar.javascript.lcov.reportPaths=theme-tests/coverage/lcov.info \
     -Dsonar.qualitygate.wait=true \
     -Dsonar.qualitygate.timeout=300

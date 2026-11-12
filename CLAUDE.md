@@ -34,8 +34,10 @@ src/main/resources/theme/workspace/login/     Tema de login (CSS, logo, mensagen
 src/main/resources/META-INF/                  Registro de providers (services) e temas
 src/test/java/                                *Test (unitário) e *IT (Keycloak real via test-framework)
 realm/realm-workspace.json                    Realm de dev importado no compose e nos testes de integração
-e2e/                                          Testes E2E do workspace.js (Playwright 1.64.1, lockfile versionado)
-scripts/                                      build.sh, generate-env.sh, smoke-test.sh, e2e.sh
+theme-tests/                                  JS do tema: unit/ (Vitest + jsdom) e e2e/ (Playwright); lockfile versionado
+provisioning/provision.sh                     Provisioner do realm master (kcadm, idempotente) e reconciliação do workspace
+scripts/                                      build, theme-unit, e2e, smoke-test, smoke-graylog, replay-fallback, sonar-analysis
+.github/workflows/ci.yml                      CI (ADR-0005)
 doc/                                          spec, plano, tarefas e ADRs
 ```
 
@@ -47,10 +49,13 @@ doc/                                          spec, plano, tarefas e ADRs
 ./scripts/generate-env.sh              # .env com segredos (uma vez)
 docker compose up -d --build           # sobe PostgreSQL + Keycloak (127.0.0.1:8180, mgmt 127.0.0.1:9100)
 ./scripts/smoke-test.sh                # valida o ambiente de pé (--skip-restart para pular o reinício)
+./scripts/theme-unit.sh                # testes do JavaScript do tema (Vitest, cobertura lcov)
 ./scripts/e2e.sh                       # E2E do tema com Playwright em container (ambiente de pé)
+docker compose run --rm provisioner     # reaplica o provisionamento do master (idempotente)
+./scripts/replay-fallback.sh           # reenvia ao Graylog a auditoria salva no fallback
 ./scripts/sonar-analysis.sh            # Quality Gate no SonarQube local (projeto keycloak; falha se reprovar)
 docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # com Graylog
-./scripts/smoke-graylog.sh             # Graylog ok, fora (fallback + erro no container) e de volta (alerta)
+./scripts/smoke-graylog.sh             # Graylog ok, master sem dado pessoal, fora (fallback), volta (alerta), reenvio
 ```
 
 ## Regras que não podem regredir
@@ -63,6 +68,12 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - Realm sem `jboss-logging`, com `eventsEnabled=false`, PKCE S256 por client policy, `admin-cli` sem password grant,
   brute force e política de senha ativos (cobertos por `WorkspaceRealmIT`).
 - Imagens Docker por tag + digest; portas só em `127.0.0.1`; segredos só no `.env`.
+- Listener padrão `jboss-logging` nunca ativo em log (níveis `trace`; master com `workspace-audit` pelo provisioner).
+  Automação usa a conta de serviço `workspace-automation` (client credentials), nunca password grant.
+- Mudança de segurança no `realm-workspace.json` também entra na reconciliação do `provisioning/provision.sh`
+  (o `--import-realm` não altera realm existente).
+- Scripts com bit de execução no git (`git update-index --chmod=+x`); CI roda ShellCheck e Trivy. Exceção de
+  vulnerabilidade só no `.trivyignore.yaml`, com justificativa e prazo.
 - Mudou recurso do tema (CSS/JS/imagem)? Incremente a versão do `pom.xml` (cache-busting `?v=`, ADR-0003).
 
 ## Decisões
@@ -71,3 +82,4 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - ADR-0002: auditoria de eventos sem dados pessoais.
 - ADR-0003: tema de login em Bootstrap 5 sobre o tema `base`.
 - ADR-0004: logs no Graylog (auditoria por GELF HTTP com fallback local; servidor pelo Docker GELF driver).
+- ADR-0005: CI e cadeia de suprimentos (ações por SHA, ShellCheck, Trivy com exceções que expiram).

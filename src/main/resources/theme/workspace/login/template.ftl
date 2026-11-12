@@ -93,8 +93,9 @@
                         <ul class="nav flex-nowrap ws-locale">
                             <#list locale.supported as l>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="${l.url}" lang="${l.languageTag}" aria-label="${l.label}"
-                                       <#if l.languageTag == locale.currentLanguageTag>aria-current="true"</#if>><span class="d-none d-sm-inline">${l.label}</span><span class="d-sm-none">${l.languageTag?upper_case}</span></a>
+                                    <#-- WCAG 2.5.3: o nome acessível contém o texto visível ("EN" no celular). -->
+                                    <a class="nav-link" href="${l.url}" lang="${l.languageTag}"
+                                       <#if l.languageTag == locale.currentLanguageTag>aria-current="true"</#if>><span class="d-none d-sm-inline">${l.label}</span><span class="d-sm-none">${l.languageTag?upper_case}<span class="visually-hidden"> ${l.label}</span></span></a>
                                 </li>
                             </#list>
                         </ul>
