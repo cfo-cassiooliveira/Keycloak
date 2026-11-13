@@ -51,7 +51,7 @@ docker compose up -d --build           # sobe PostgreSQL + Keycloak (127.0.0.1:8
 ./scripts/smoke-test.sh                # valida o ambiente de pé (--skip-restart para pular o reinício)
 ./scripts/theme-unit.sh                # testes do JavaScript do tema (Vitest, cobertura lcov)
 ./scripts/e2e.sh                       # E2E do tema com Playwright em container (ambiente de pé)
-docker compose run --rm provisioner     # reaplica o provisionamento do master (idempotente)
+docker compose run --rm --no-deps provisioner  # reaplica o provisionamento do master (idempotente; --no-deps não recria a stack)
 ./scripts/replay-fallback.sh           # reenvia ao Graylog a auditoria salva no fallback
 ./scripts/sonar-analysis.sh            # Quality Gate no SonarQube local (projeto keycloak; falha se reprovar)
 docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # com Graylog

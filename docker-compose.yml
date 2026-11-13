@@ -21,7 +21,7 @@ services:
 
   keycloak:
     build: .
-    image: workspace-keycloak:0.3.1
+    image: workspace-keycloak:0.3.2
     # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
     command: ["start", "--optimized", "--import-realm"]
     environment:
@@ -68,7 +68,7 @@ services:
   # Provisionamento idempotente do realm master (auditoria, força bruta, client de serviço, sem password grant).
   # Roda a cada "docker compose up"; para reaplicar: docker compose run --rm provisioner
   provisioner:
-    image: workspace-keycloak:0.3.1
+    image: workspace-keycloak:0.3.2
     entrypoint: ["bash", "/provisioning/provision.sh"]
     environment:
       KC_URL: http://keycloak:8080

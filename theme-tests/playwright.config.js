@@ -14,5 +14,10 @@ module.exports = defineConfig({
     locale: "pt-BR",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Desktop, tablet e celular (frontend.md): a tela de login precisa funcionar nas três classes de dispositivo.
+  projects: [
+    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    { name: "tablet", use: { ...devices["iPad (gen 7)"] } },
+    { name: "mobile", use: { ...devices["Pixel 7"] } },
+  ],
 });

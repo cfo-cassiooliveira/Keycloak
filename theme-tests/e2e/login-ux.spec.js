@@ -142,3 +142,49 @@ test("login page loads without console errors", async ({ page, baseURL }) => {
 
   expect(errors).toEqual([]);
 });
+
+// Contraste de componentes (WCAG 1.4.11) medido no navegador real, contra o fundo efetivo da página.
+test.describe("form field contrast", () => {
+  const contrastOf = (page, selector) =>
+    page.evaluate((sel) => {
+      const parse = (c) => c.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const lum = (rgb) => {
+        const [r, g, b] = rgb.map((v) => {
+          const s = v / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const field = document.querySelector(sel);
+      const [a, b] = [lum(parse(getComputedStyle(field).borderTopColor)), lum(parse(getComputedStyle(document.body).backgroundColor))];
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }, selector);
+
+  // Regressão: a borda dos campos herdava o cinza do Bootstrap (#dee2e6), com 1,22:1 sobre o fundo.
+  test("field borders reach 3:1 at rest and when focused", async ({ page, baseURL }) => {
+    await openLoginPage(page, baseURL);
+    await page.locator("#username").blur();
+
+    expect(await contrastOf(page, "#password")).toBeGreaterThanOrEqual(3);
+    expect(await contrastOf(page, "#username")).toBeGreaterThanOrEqual(3);
+
+    await page.locator("#password").focus();
+
+    expect(await contrastOf(page, "#password")).toBeGreaterThanOrEqual(3);
+  });
+});
+
+test.describe("accessibility", () => {
+  const AxeBuilder = require("@axe-core/playwright").default;
+
+  test("login page has no serious or critical axe violations", async ({ page, baseURL }) => {
+    await openLoginPage(page, baseURL);
+
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    const blocking = results.violations
+      .filter((v) => ["serious", "critical"].includes(v.impact))
+      .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+
+    expect(blocking).toEqual([]);
+  });
+});

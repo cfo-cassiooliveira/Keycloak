@@ -31,6 +31,17 @@ wait_ready() {
   return 1
 }
 
+# Espera a mensagem aparecer no log do Keycloak desde "$1". O import do realm roda em segundo plano depois que o
+# servidor já responde UP, então uma leitura única do log logo após o wait_ready pode chegar antes da mensagem.
+wait_for_log() {
+  local since="$1" message="$2"
+  for _ in $(seq 1 30); do
+    if docker compose logs --since "$since" keycloak 2>/dev/null | grep -q -- "$message"; then return 0; fi
+    sleep 2
+  done
+  return 1
+}
+
 # Faz o login pelo formulário (fluxo real do navegador) com usuário inexistente.
 # Uso: failed_form_login [realm] [client] [redirect_uri]   (padrão: realm do Workspace pela Account Console)
 failed_form_login() {
@@ -58,6 +69,9 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+
+# O smoke test roda sobre a stack como ela foi subida (inclusive com o docker-compose.graylog.yml): não pode recriá-la.
+keycloak_container="$(docker compose ps -q keycloak)"
 
 echo "== Saúde"
 check "/health/ready responde UP" "$(wait_ready && echo true || echo false)"
@@ -93,7 +107,7 @@ ropc_response="$(curl -s "${BASE_URL}/realms/master/protocol/openid-connect/toke
   --data-urlencode "username=smoke.ropc" --data-urlencode "password=x")"
 check "admin-cli do master recusa password grant" "$(contains "$ropc_response" 'unauthorized_client')"
 check "provisioner é idempotente (reexecução sem erro)" \
-  "$(docker compose run --rm provisioner >/dev/null 2>&1 && echo true || echo false)"
+  "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
 
 echo "== Tema"
 login_page="$(curl -fs -H 'Accept-Language: pt-BR' -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
@@ -132,8 +146,13 @@ if [[ "${1:-}" != "--skip-restart" ]]; then
   docker compose restart keycloak >/dev/null
   check "Keycloak volta UP após reinício" "$(wait_ready && echo true || echo false)"
   check "reinício não reimporta o realm existente" \
-    "$(docker compose logs --since "$since" keycloak 2>/dev/null | grep -q "Realm '${REALM}' already exists" && echo true || echo false)"
+    "$(wait_for_log "$since" "Realm '${REALM}' already exists" && echo true || echo false)"
 fi
+
+# Regressão: "docker compose run provisioner" sem --no-deps recriava o Keycloak só com o docker-compose.yml,
+# desligando o envio da auditoria ao Graylog sem aviso (e o smoke-graylog.sh falhava depois).
+check "smoke test não recria o Keycloak (mantém o override com que a stack subiu)" \
+  "$([[ -n "$keycloak_container" && "$(docker compose ps -q keycloak)" == "$keycloak_container" ]] && echo true || echo false)"
 
 echo
 if [[ "$failures" -gt 0 ]]; then

@@ -158,3 +158,12 @@ Pendentes para a próxima atualização (decisão do responsável técnico):
 - [x] **N8** — Segredos e senhas dos scripts por stdin/arquivo, não por argumento.
 - [x] **Extra** — Realm `workspace` reconciliado pelo provisioner (o `--import-realm` não altera realm existente);
       scripts com bit de execução no git; exceção do Guava (CVE-2026-102554) com prazo no `.trivyignore.yaml` (ADR-0005).
+
+## Versão 0.3.2 — Correções da reavaliação de 2026-11-13
+
+- [x] **B1** (bloqueante) — Borda dos campos do tema com 1,22:1 (WCAG 1.4.11): token `--ws-field-border` (3,65:1) nos
+      campos e no botão de mostrar senha; foco em pervinca escuro. Teste: E2E `form field contrast`.
+- [x] **I1** — `smoke-test.sh` recriava o Keycloak sem o `docker-compose.graylog.yml` (`docker compose run` sem
+      `--no-deps`), desligando o envio ao Graylog. Teste: o smoke confere que o container é o mesmo do início ao fim.
+- [x] **I2** — E2E do tema nos 3 projetos (desktop, tablet e celular) e com axe-core (sem violação séria/crítica).
+- [x] **I3** — CI com gitleaks em todo o histórico (`security.md`).

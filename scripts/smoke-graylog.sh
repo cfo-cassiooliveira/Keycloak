@@ -3,7 +3,7 @@
 #   1) falha de login chega ao Graylog com o id técnico do usuário e sem dados pessoais;
 #   2) login inválido no realm master: auditado sem dados pessoais e sem username em nenhum log do Graylog (LGPD);
 #   3) Graylog inalcançável: o registro vai para o arquivo de fallback e o container informa o erro;
-#   4) Graylog de volta: o evento AUDIT_FALLBACK_USED chega (e aciona o alerta "Keycloak: auditoria salva no fallback");
+#   4) Graylog de volta: o evento AUDIT_FALLBACK_USED chega (e aciona o alerta "Keycloak - Auditoria salva no fallback");
 #   5) reenvio do fallback: o registro da queda chega ao Graylog, o fallback esvazia e o que passou da retenção é descartado.
 # A queda é simulada desconectando o Keycloak da rede "observability" (o Graylog continua atendendo os outros projetos).
 # Uso (na raiz do projeto): docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
