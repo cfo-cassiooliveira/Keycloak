@@ -87,6 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: ./scripts/generate-env.sh
+      # Rede externa compartilhada com cadastro e legado (o compose falha se ela não existir).
+      - run: ./scripts/identity-network.sh
       - run: docker compose up -d --build --wait keycloak
       - name: Provisionamento do realm master
         run: docker compose run --rm --no-deps provisioner

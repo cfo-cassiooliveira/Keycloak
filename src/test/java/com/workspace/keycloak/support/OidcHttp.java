@@ -113,6 +113,26 @@ public final class OidcHttp {
         return execute(httpClient, post, HttpClientContext.create());
     }
 
+    /** Token da conta de serviço de um client confidencial (client credentials), com os scopes pedidos. */
+    public static Response clientCredentialsGrant(HttpClient httpClient, String realmBaseUrl, String clientId,
+            String clientSecret, String scope) throws IOException {
+        HttpPost post = new HttpPost(realmBaseUrl + "/protocol/openid-connect/token");
+        List<NameValuePair> form = List.of(
+                new BasicNameValuePair("grant_type", "client_credentials"),
+                new BasicNameValuePair("client_id", clientId),
+                new BasicNameValuePair("client_secret", clientSecret),
+                new BasicNameValuePair("scope", scope));
+        post.setEntity(new UrlEncodedFormEntity(form, StandardCharsets.UTF_8));
+        return execute(httpClient, post);
+    }
+
+    /** GET autenticado por bearer token (ex.: Admin API com o token de uma conta de serviço). */
+    public static Response getWithBearer(HttpClient httpClient, String url, String accessToken) throws IOException {
+        HttpGet get = new HttpGet(url);
+        get.setHeader("Authorization", "Bearer " + accessToken);
+        return execute(httpClient, get);
+    }
+
     public static int getStatus(HttpClient httpClient, String url) throws IOException {
         return execute(httpClient, new HttpGet(url), HttpClientContext.create()).status();
     }

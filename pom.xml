@@ -139,6 +139,13 @@
             <testResource>
                 <directory>realm</directory>
             </testResource>
+            <!-- User Profile e textos do realm aplicados pelo provisioner: os testes usam os mesmos arquivos. -->
+            <testResource>
+                <directory>provisioning</directory>
+                <includes>
+                    <include>*.json</include>
+                </includes>
+            </testResource>
         </testResources>
         <pluginManagement>
             <plugins>

@@ -1,0 +1,126 @@
+{
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "${username}",
+      "validations": {
+        "length": { "min": 4, "max": 30 },
+        "pattern": { "pattern": "^[a-z0-9._-]+$", "error-message": "invalidUsernamePattern" },
+        "up-username-not-idn-homograph": {}
+      },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "email",
+      "displayName": "${email}",
+      "validations": { "email": {}, "length": { "max": 255 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "firstName",
+      "displayName": "${firstName}",
+      "validations": { "length": { "max": 100 }, "person-name-prohibited-characters": {} },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "lastName",
+      "displayName": "${lastName}",
+      "validations": { "length": { "max": 150 }, "person-name-prohibited-characters": {} },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "mobilePhone",
+      "displayName": "${mobilePhone}",
+      "validations": { "pattern": { "pattern": "^\\+55\\d{11}$", "error-message": "invalidMobilePhone" } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false
+    },
+    {
+      "name": "postalCode",
+      "displayName": "${postalCode}",
+      "validations": { "pattern": { "pattern": "^\\d{8}$", "error-message": "invalidPostalCode" } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "street",
+      "displayName": "${street}",
+      "validations": { "length": { "max": 200 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "addressNumber",
+      "displayName": "${addressNumber}",
+      "validations": { "length": { "max": 20 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "complement",
+      "displayName": "${complement}",
+      "validations": { "length": { "max": 100 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "district",
+      "displayName": "${district}",
+      "validations": { "length": { "max": 100 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "city",
+      "displayName": "${city}",
+      "validations": { "length": { "max": 100 } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "cityIbgeCode",
+      "displayName": "${cityIbgeCode}",
+      "validations": { "pattern": { "pattern": "^\\d{7}$", "error-message": "invalidCityIbgeCode" } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "state",
+      "displayName": "${state}",
+      "validations": { "pattern": { "pattern": "^[A-Z]{2}$", "error-message": "invalidState" } },
+      "permissions": { "view": ["admin", "user"], "edit": ["admin"] },
+      "multivalued": false,
+      "group": "address"
+    },
+    {
+      "name": "legacyUserId",
+      "displayName": "${legacyUserId}",
+      "validations": {
+        "pattern": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "error-message": "invalidLegacyUserId"
+        }
+      },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "address",
+      "displayHeader": "${addressGroupHeader}",
+      "displayDescription": "${addressGroupDescription}"
+    }
+  ]
+}
