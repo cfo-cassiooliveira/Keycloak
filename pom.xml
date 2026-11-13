@@ -7,7 +7,7 @@
 
     <groupId>com.workspace.keycloak</groupId>
     <artifactId>workspace-keycloak-extensions</artifactId>
-    <version>0.3.1</version>
+    <version>0.3.2</version>
     <packaging>jar</packaging>
     <name>Workspace Keycloak Extensions</name>
 

@@ -19,6 +19,8 @@
   --ws-periwinkle-darker: #3a41a8;
   --ws-paper: #f6f7fd;
   --ws-graphite: #1c2236;
+  /* Borda de campo: >= 3:1 contra o fundo (WCAG 1.4.11); o cinza padrão do Bootstrap (#dee2e6) tinha 1,22:1. */
+  --ws-field-border: #7a8099;
 
   --bs-body-font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bs-body-color: var(--ws-graphite);
@@ -64,9 +66,16 @@
   font-size: 0.9375rem;
 }
 
+/* Limite visível dos componentes de formulário; divisórias decorativas seguem com o cinza claro do Bootstrap. */
+.form-control,
+.form-select,
+.form-check-input {
+  border-color: var(--ws-field-border);
+}
+
 .form-control:focus,
 .form-check-input:focus {
-  border-color: var(--ws-periwinkle);
+  border-color: var(--ws-periwinkle-dark);
   box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color);
 }
 
@@ -192,12 +201,12 @@
 }
 
 .ws-password-toggle {
-  --bs-btn-border-color: var(--bs-border-color);
+  --bs-btn-border-color: var(--ws-field-border);
   --bs-btn-hover-bg: var(--bs-tertiary-bg);
-  --bs-btn-hover-border-color: var(--bs-border-color);
+  --bs-btn-hover-border-color: var(--ws-field-border);
   --bs-btn-hover-color: var(--ws-graphite);
   --bs-btn-active-bg: var(--bs-secondary-bg);
-  --bs-btn-active-border-color: var(--bs-border-color);
+  --bs-btn-active-border-color: var(--ws-field-border);
   --bs-btn-active-color: var(--ws-graphite);
   min-width: 3.25rem;
 }

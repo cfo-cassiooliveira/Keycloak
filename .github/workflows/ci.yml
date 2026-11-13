@@ -21,8 +21,19 @@ concurrency:
 env:
   SHELLCHECK_IMAGE: koalaman/shellcheck:v0.10.0@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb
   TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
 
 jobs:
+  secrets:
+    name: gitleaks (segredos em todo o histórico)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" git /repo --no-banner --redact --exit-code 1
+
   java:
     name: build + testes Java (unitários e integração)
     runs-on: ubuntu-latest
@@ -78,7 +89,7 @@ jobs:
       - run: ./scripts/generate-env.sh
       - run: docker compose up -d --build --wait keycloak
       - name: Provisionamento do realm master
-        run: docker compose run --rm provisioner
+        run: docker compose run --rm --no-deps provisioner
       - name: Trivy na imagem (HIGH/CRITICAL com correção; exceções com prazo no .trivyignore.yaml)
         run: >-
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" "$TRIVY_IMAGE" image

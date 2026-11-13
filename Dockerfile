@@ -22,4 +22,6 @@ RUN /opt/keycloak/bin/kc.sh build \
 # 3) Imagem final já otimizada: o start não recompila (start --optimized).
 FROM quay.io/keycloak/keycloak:26.8.2@sha256:723b1d6e254c0fc96d5cffec860c7e0744d6a3277822b865bb538cf891575e41
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
+# A imagem oficial já roda como 1000; declarado aqui para não depender do herdado (Trivy DS002).
+USER 1000
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]

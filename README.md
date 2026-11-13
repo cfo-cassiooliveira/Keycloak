@@ -55,7 +55,7 @@ O serviço `provisioner` (`provisioning/provision.sh`, idempotente, roda a cada 
 auditoria pelo `workspace-audit` (o listener padrão grava username e IP), sem eventos gravados no banco, proteção contra
 força bruta, `admin-cli` **sem password grant** e o client de serviço `workspace-automation` (client credentials,
 segredo `KC_AUTOMATION_CLIENT_SECRET` do `.env`) para scripts e CI. Ele também reconcilia as configurações de auditoria
-do realm `workspace` (o `--import-realm` não altera realm já existente). Para reaplicar: `docker compose run --rm provisioner`.
+do realm `workspace` (o `--import-realm` não altera realm já existente). Para reaplicar: `docker compose run --rm --no-deps provisioner` (o `--no-deps` evita recriar a stack sem o override do Graylog).
 
 O `bootstrap-admin` é **temporário** e só entra pelo Admin Console. Na primeira subida: Admin Console → realm `master` →
 crie um administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o

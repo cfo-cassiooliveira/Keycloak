@@ -30,7 +30,7 @@ O Keycloak 26 não tem handler GELF nativo, e GELF por TCP/UDP não confirma o r
    hora e, durante a queda, no máximo um resumo por minuto com a contagem. Se até o arquivo falhar, a mensagem (sem
    dado pessoal) vai inteira para o log do container.
 5. Ao voltar, o container informa a recuperação e envia o evento `AUDIT_FALLBACK_USED`, que aciona o alerta
-   "Keycloak: auditoria salva no fallback" no Graylog.
+   "Keycloak - Auditoria salva no fallback" no Graylog.
 6. **Logs do servidor** (startup, erros) e do PostgreSQL vão pelo Docker GELF driver (tags `keycloak-server` e
    `keycloak-db`), como nos outros projetos; o pipeline do Graylog extrai nível, logger e texto do JSON. O Docker mantém
    cópia local.
