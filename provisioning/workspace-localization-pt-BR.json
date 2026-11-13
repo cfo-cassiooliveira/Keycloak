@@ -1,0 +1,20 @@
+{
+  "mobilePhone": "Celular",
+  "postalCode": "CEP",
+  "street": "Logradouro",
+  "addressNumber": "Número",
+  "complement": "Complemento",
+  "district": "Bairro",
+  "city": "Município",
+  "cityIbgeCode": "Código IBGE do município",
+  "state": "UF",
+  "legacyUserId": "Id no sistema Legado",
+  "addressGroupHeader": "Endereço",
+  "addressGroupDescription": "Endereço residencial informado no cadastro.",
+  "invalidUsernamePattern": "Use só letras minúsculas, números, ponto, hífen ou sublinhado.",
+  "invalidMobilePhone": "Informe o celular no formato +55 com DDD e 9 dígitos.",
+  "invalidPostalCode": "Informe o CEP com 8 dígitos.",
+  "invalidCityIbgeCode": "Informe o código IBGE com 7 dígitos.",
+  "invalidState": "Informe a sigla da UF com 2 letras maiúsculas.",
+  "invalidLegacyUserId": "Id do Legado inválido."
+}

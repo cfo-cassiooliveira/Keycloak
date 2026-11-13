@@ -1,6 +1,7 @@
-# Keycloak do Workspace (ambiente local). Antes da primeira subida: ./scripts/generate-env.sh
+# Keycloak do Workspace (ambiente local). Antes da primeira subida: ./scripts/generate-env.sh && ./scripts/identity-network.sh
 # Uso: docker compose up -d --build && ./scripts/smoke-test.sh
-# Portas só em 127.0.0.1: 8180 (login/OIDC/Admin Console) e 9100 (health/metrics). 9000/9001 são do Graylog/SonarQube.
+# Portas só em 127.0.0.1: 8180 (login/OIDC/Admin Console), 9100 (health/metrics) e 8025 (Mailpit).
+# 9000/9001 são do Graylog/SonarQube.
 name: keycloak
 
 services:
@@ -33,6 +34,9 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
       # HTTP só no ambiente local; fora dele o Keycloak fica atrás de proxy TLS (proxy-headers=xforwarded).
       KC_HOSTNAME: http://localhost:8180
+      # Containers da rede workspace-identity (BFF do cadastro) chamam http://keycloak:8080: com o backchannel
+      # dinâmico, token/JWKS respondem nesse endereço e o issuer continua http://localhost:8180 (o do navegador).
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_ENABLED: "true"
       KC_LOG_CONSOLE_OUTPUT: json
       # O listener padrão jboss-logging grava username e IP; em "trace" ele nunca aparece no log (LGPD), nem em
@@ -48,9 +52,14 @@ services:
     ports:
       - "127.0.0.1:8180:8080"
       - "127.0.0.1:9100:9000"
+    networks:
+      - default
+      - identity
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     healthcheck:
       # A imagem não tem curl: usa /dev/tcp do bash na porta de gerenciamento.
       test:
@@ -65,6 +74,16 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # SMTP de desenvolvimento: guarda os e-mails (reset de senha) sem entregá-los; caixa em http://127.0.0.1:8025.
+  mailpit:
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
   # Provisionamento idempotente do realm master (auditoria, força bruta, client de serviço, sem password grant).
   # Roda a cada "docker compose up"; para reaplicar: docker compose run --rm provisioner
   provisioner:
@@ -75,12 +94,19 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?KC_BOOTSTRAP_ADMIN_USERNAME ausente. Rode ./scripts/generate-env.sh}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
       KC_AUTOMATION_CLIENT_SECRET: ${KC_AUTOMATION_CLIENT_SECRET:?KC_AUTOMATION_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+      KC_CADASTRO_CLIENT_SECRET: ${KC_CADASTRO_CLIENT_SECRET:?KC_CADASTRO_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
     volumes:
       - ./provisioning:/provisioning:ro
     depends_on:
       keycloak:
         condition: service_healthy
     restart: "no"
+
+networks:
+  # Rede compartilhada com o cadastro e o legado (spec 001 do cadastro); criada por ./scripts/identity-network.sh.
+  identity:
+    name: workspace-identity
+    external: true
 
 volumes:
   keycloak-db-data:

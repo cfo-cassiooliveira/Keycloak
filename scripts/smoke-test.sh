@@ -109,6 +109,56 @@ check "admin-cli do master recusa password grant" "$(contains "$ropc_response" '
 check "provisioner é idempotente (reexecução sem erro)" \
   "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
 
+echo "== Cadastro (spec 001 do cadastro)"
+cadastro_token() {
+  printf '%s' "$KC_CADASTRO_CLIENT_SECRET" \
+    | curl -fs "${BASE_URL}/realms/${REALM}/protocol/openid-connect/token" \
+      --data-urlencode "grant_type=client_credentials" --data-urlencode "client_id=cadastro" \
+      --data-urlencode "client_secret@-" --data-urlencode "scope=$1" \
+    | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true
+}
+cadastro_admin_token="$(cadastro_token kc-admin-api)"
+check "conta de serviço do cadastro lista usuários pela Admin API (scope kc-admin-api)" \
+  "$(curl -fs -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${cadastro_admin_token}" \
+    "${BASE_URL}/admin/realms/${REALM}/users?max=1" | grep -q 200 && echo true || echo false)"
+check "token do cadastro sem o scope kc-admin-api é recusado pela Admin API" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cadastro_token openid)" \
+    "${BASE_URL}/admin/realms/${REALM}/users?max=1" | grep -q 401 && echo true || echo false)"
+check "realm permite reset de senha" "$(contains "$realm_json" '"resetPasswordAllowed":true')"
+# Token novo: o do início expira (60 s) durante a reexecução do provisioner acima.
+admin_token="$(printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
+  | curl -fs "${BASE_URL}/realms/master/protocol/openid-connect/token" \
+    --data-urlencode "grant_type=client_credentials" --data-urlencode "client_id=workspace-automation" \
+    --data-urlencode "client_secret@-" \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true)"
+user_profile="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/${REALM}/users/profile" || true)"
+check "User Profile tem os atributos do cadastro" \
+  "$([[ "$(contains "$user_profile" '"name":"mobilePhone"')" == true && "$(contains "$user_profile" '"name":"legacyUserId"')" == true ]] && echo true || echo false)"
+
+echo "== Rede de identidade e e-mail"
+# Requisição HTTP crua de dentro da rede workspace-identity, como faz o BFF do cadastro (imagem do próprio Keycloak:
+# tem bash e /dev/tcp, sem precisar de outra imagem). A requisição chega pela entrada padrão.
+kc_image="$(docker inspect -f '{{.Config.Image}}' "$keycloak_container")"
+identity_http() {
+  docker run --rm -i --network workspace-identity --entrypoint bash "$kc_image" \
+    -c 'exec 3<>/dev/tcp/keycloak/8080 && cat >&3 && cat <&3'
+}
+check "rede workspace-identity existe" "$(docker network inspect workspace-identity >/dev/null 2>&1 && echo true || echo false)"
+discovery="$(printf 'GET /realms/%s/.well-known/openid-configuration HTTP/1.0\r\nHost: keycloak:8080\r\n\r\n' "$REALM" | identity_http)"
+check "backchannel: issuer continua o do navegador (localhost:8180)" \
+  "$(contains "$discovery" "\"issuer\":\"${BASE_URL}/realms/${REALM}\"")"
+check "backchannel: token endpoint responde no endereço interno (keycloak:8080)" \
+  "$(contains "$discovery" "\"token_endpoint\":\"http://keycloak:8080/realms/${REALM}/protocol/openid-connect/token\"")"
+token_body="grant_type=client_credentials&client_id=workspace-automation&client_secret=${KC_AUTOMATION_CLIENT_SECRET}"
+token_response="$(printf 'POST /realms/master/protocol/openid-connect/token HTTP/1.0\r\nHost: keycloak:8080\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %s\r\n\r\n%s' \
+  "${#token_body}" "$token_body" | identity_http)"
+internal_token="$(grep -o '"access_token":"[^"]*"' <<<"$token_response" | cut -d'"' -f4 || true)"
+token_payload="$(cut -d. -f2 <<<"$internal_token" | tr '_-' '/+' | base64 -d 2>/dev/null || true)"
+check "token emitido pela rede interna tem o issuer do navegador" \
+  "$(contains "$token_payload" "\"iss\":\"${BASE_URL}/realms/master\"")"
+check "Mailpit (SMTP de desenvolvimento) no ar em 127.0.0.1:8025" \
+  "$(curl -fs -o /dev/null -w '%{http_code}' http://127.0.0.1:8025/api/v1/info | grep -q 200 && echo true || echo false)"
+
 echo "== Tema"
 login_page="$(curl -fs -H 'Accept-Language: pt-BR' -G "${BASE_URL}/realms/${REALM}/protocol/openid-connect/auth" \
   --data-urlencode "client_id=account-console" --data-urlencode "response_type=code" \

@@ -32,7 +32,8 @@ winget install EclipseAdoptium.Temurin.21.JDK
 ./scripts/build.sh                 # compila + testes unitários e de integração + cobertura (JaCoCo ≥ 80%)
 ./scripts/theme-unit.sh            # testes do JavaScript do tema (Vitest + jsdom, cobertura lcov)
 ./scripts/generate-env.sh          # cria/completa o .env com segredos aleatórios (idempotente)
-docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + provisioner do realm master
+./scripts/identity-network.sh      # cria a rede workspace-identity, compartilhada com cadastro e legado (idempotente)
+docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + Mailpit + provisioner do realm master
 ./scripts/smoke-test.sh            # valida saúde, realms, provisioner, providers, tema e auditoria
 ./scripts/e2e.sh                   # testes E2E do tema (Playwright em navegador real, em container)
 ./scripts/sonar-analysis.sh        # build + testes + análise no SonarQube local (falha se o Quality Gate reprovar)
@@ -46,6 +47,20 @@ mais ShellCheck e Trivy (dependências e imagem).
 | http://localhost:8180/admin | Admin Console (usuário `bootstrap-admin`, senha no `.env`) |
 | http://localhost:8180/realms/workspace/account | Account Console (tela de login do Workspace) |
 | http://127.0.0.1:9100/health/ready | Readiness (também `/health/live`, `/health` e `/metrics`) |
+| http://127.0.0.1:8025 | Mailpit: caixa dos e-mails enviados pelo Keycloak em desenvolvimento (reset de senha) |
+
+### Realm `workspace` e o Cadastro
+
+O realm entrega ao [`cadastro`](../cadastro) o client confidencial `cadastro` (Authorization Code + PKCE S256, redirect
+exato `http://localhost:4300/bff/signin-oidc`, sem password grant). A conta de serviço dele tem só `view-users`,
+`query-users` e `manage-users` e precisa pedir `scope=kc-admin-api` para falar com a Admin API. Também entrega as roles
+`admin` e `user` (`user` é padrão), o reset de senha (e-mails no Mailpit) e o User Profile com os atributos do cadastro
+(`provisioning/workspace-user-profile.json`, editáveis só por admin). O segredo `KC_CADASTRO_CLIENT_SECRET` é gerado
+pelo `generate-env.sh` e aplicado pelo provisioner; o mesmo valor vai para o `.env` do cadastro.
+
+Containers da rede `workspace-identity` (ex.: BFF do cadastro) acessam o Keycloak em `http://keycloak:8080`. Com
+`KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, token e JWKS respondem nesse endereço e o `issuer` continua
+`http://localhost:8180/realms/...`, o mesmo que o navegador vê.
 
 As portas são publicadas só em `127.0.0.1`. O PostgreSQL não tem porta publicada.
 

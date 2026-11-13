@@ -29,6 +29,8 @@ ensure_key KC_BOOTSTRAP_ADMIN_USERNAME bootstrap-admin
 ensure_key KC_BOOTSTRAP_ADMIN_PASSWORD "$(random 32)"
 # Segredo do client de serviço "workspace-automation" (provisionamento, smoke tests e CI; client credentials).
 ensure_key KC_AUTOMATION_CLIENT_SECRET "$(random 40)"
+# Segredo do client confidencial "cadastro" (BFF do Cadastro). O mesmo valor vai para o .env do cadastro.
+ensure_key KC_CADASTRO_CLIENT_SECRET "$(random 40)"
 
 if [[ "$created" == true ]]; then
   echo ".env criado. Admin temporário: bootstrap-admin — senha em KC_BOOTSTRAP_ADMIN_PASSWORD no .env."

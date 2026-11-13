@@ -1,0 +1,20 @@
+{
+  "mobilePhone": "Mobile phone",
+  "postalCode": "Postal code",
+  "street": "Street",
+  "addressNumber": "Number",
+  "complement": "Complement",
+  "district": "District",
+  "city": "City",
+  "cityIbgeCode": "City IBGE code",
+  "state": "State",
+  "legacyUserId": "Legacy system id",
+  "addressGroupHeader": "Address",
+  "addressGroupDescription": "Home address provided at sign-up.",
+  "invalidUsernamePattern": "Use only lowercase letters, digits, dot, hyphen or underscore.",
+  "invalidMobilePhone": "Enter the mobile phone as +55 with area code and 9 digits.",
+  "invalidPostalCode": "Enter the postal code with 8 digits.",
+  "invalidCityIbgeCode": "Enter the 7-digit IBGE code.",
+  "invalidState": "Enter the 2-letter state code in uppercase.",
+  "invalidLegacyUserId": "Invalid legacy id."
+}
