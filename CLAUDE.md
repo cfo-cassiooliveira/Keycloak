@@ -62,6 +62,9 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 
 - Auditoria só com campos da allowlist (`AuditEventMapper`); campo novo exige revisão de LGPD e teste. Usuário só
   pelo id técnico (`user_id`, `target_user_id`, `actor_user_id`); nunca username, e-mail, IP ou sessão.
+- Dado pessoal enviado ao Graylog (só as exceções de ADR, como o `masked_login` do ADR-0007) vai **sempre como campo
+  GELF próprio**, nunca dentro do `short_message`. O Graylog mascara pelo nome do campo e troca o mesmo valor no texto
+  (ADR-0002 do `../graylog`; nomes aceitos nas listas `LGPD_*` do `../graylog/provisioning/provision.sh`).
 - Nenhum registro de auditoria se perde: falha no Graylog vai para o fallback em arquivo e o container loga o erro;
   o envio ao Graylog é assíncrono e nunca atrasa o login (ADR-0004).
 - O listener nunca propaga exceção para o fluxo de login.
