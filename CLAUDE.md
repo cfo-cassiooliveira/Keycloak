@@ -75,9 +75,10 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
   (`fullScopeAllowed=false`) tem a role no escopo, sem mapper novo: o token só ganha `log-investigator` em
   `realm_access` (provado pelo `CadastroRealmIT` e pelo `LogInvestigatorOtpBypassIT`; o smoke confere o escopo).
 - **Contrato com o Cadastro (C03)**: a role sozinha não basta, porque SSO por cookie e refresh de token antigo trazem a
-  role sem OTP. A policy `logs:investigate` exige a role, `acr=otp` **e** `auth_time` ≤ 5 min; o BFF pede
-  `acr_values=otp` ao abrir a pesquisa (e de novo quando o `auth_time` vencer) e confere `acr` e `auth_time` recebidos
-  (o parâmetro pode ser alterado no navegador). `acr=otp` só sai quando o OTP foi digitado **nesta** autenticação:
+  role sem OTP. A policy `logs:investigate` exige a role, `acr=otp` **e** `auth_time` ≤ 5 min; a tela de
+  pesquisa (C04) abre `/bff/login?acr_values=otp&returnUrl=/log-search` e repete o pedido quando o `auth_time` vencer; o
+  BFF valida `acr` e `auth_time` no callback e a policy os confere a cada chamada (o parâmetro pode ser alterado no
+  navegador). `acr=otp` só sai quando o OTP foi digitado **nesta** autenticação:
   step-up por LoA no `workspace-browser` (realm `acr.loa.map` = `{"password":1,"otp":2}`; LoA 2 com
   `loa-max-age=0`), e o `auth_time` vira a hora do step-up. Login comum termina com `acr=password`, mesmo com OTP; o
   reset de senha também, mesmo com `acr_values=otp`. O refresh de token do step-up mantém `acr=otp` e o `auth_time` do

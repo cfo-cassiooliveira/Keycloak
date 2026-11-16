@@ -66,9 +66,9 @@ quem ainda não tem OTP configura o aplicativo autenticador antes de concluir. Q
 fluxos padrão (OTP só se já configurou). O client `cadastro` tem a role no escopo, então ela chega no token em
 `realm_access.roles`, sem nenhum claim novo.
 
-Contrato com o Cadastro: a pesquisa em logs exige a role, `acr=otp` e `auth_time` de no máximo 5 minutos atrás. O BFF
-pede `acr_values=otp` ao abrir a tela de pesquisa (e de novo quando o `auth_time` passar de 5 minutos) e confere `acr` e
-`auth_time` do token recebido. O Keycloak só emite `acr=otp` quando o OTP foi digitado nessa autenticação (step-up por
+Contrato com o Cadastro: a pesquisa em logs exige a role, `acr=otp` e `auth_time` de no máximo 5 minutos atrás. A tela
+de pesquisa (C04) abre `/bff/login?acr_values=otp&returnUrl=/log-search` e repete o pedido quando o `auth_time` passar
+de 5 minutos; o BFF valida `acr` e `auth_time` no callback e a policy `logs:investigate` os confere a cada chamada. O Keycloak só emite `acr=otp` quando o OTP foi digitado nessa autenticação (step-up por
 nível de autenticação: `acr.loa.map` do realm = `{"password":1,"otp":2}`), e o `auth_time` passa a ser a hora do
 step-up. Login comum, SSO por cookie e refresh de token obtido sem OTP emitem `acr=password` ou `0`. Já o refresh de um
 token do step-up **mantém** `acr=otp` (e o `auth_time` do step-up) enquanto durar a sessão do client, até 10 h: por
