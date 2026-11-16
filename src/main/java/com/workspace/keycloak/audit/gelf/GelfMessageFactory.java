@@ -18,11 +18,11 @@ import com.workspace.keycloak.audit.AuditRecord;
  * <p>Cada campo do registro (já filtrado pela allowlist, sem dados pessoais) vira um campo adicional
  * {@code _campo}; os campos padrão do serviço (nome, versão, ambiente, host) são acrescentados.</p>
  *
- * <p><b>Dados pessoais (LGPD)</b>: por regra, a auditoria não leva dado pessoal (ADR-0002). As exceções previstas em
- * ADR (ex.: {@code masked_login}, ADR-0007) vão <b>sempre como campo próprio</b>, nunca dentro do
- * {@code short_message}. O pipeline do Graylog reconhece o tipo pelo nome do campo, mascara o campo e troca o mesmo
- * valor dentro do texto, sem adivinhar (ADR-0002 do projeto graylog; nomes aceitos nas listas {@code LGPD_*} do
- * {@code provision.sh}).</p>
+ * <p><b>Dados pessoais (LGPD)</b>: a auditoria não leva dado pessoal (ADR-0002 deste projeto). Uma exceção só vale
+ * com ADR aceito (o {@code masked_login} do ADR-0007 ainda está proposto). Quando houver, o campo vai <b>sempre como
+ * campo próprio</b>, nunca dentro do {@code short_message}, e o nome dele entra antes nas listas {@code LGPD_*} do
+ * {@code provision.sh} do projeto graylog, que mascara pelo nome do campo. O Keycloak não gera o campo
+ * {@code _token} de pseudonimização: a chave HMAC fica só no legado e no cadastro (ADR-0003 do graylog).</p>
  */
 public final class GelfMessageFactory {
 

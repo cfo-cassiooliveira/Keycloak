@@ -12,6 +12,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.apache.http.client.HttpClient;
 import org.junit.jupiter.api.Test;
+import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -78,6 +79,33 @@ class CadastroRealmIT {
             assertThat(mapper.getConfig()).containsEntry("user.attribute", "username")
                     .containsEntry("claim.name", "preferred_username");
         });
+    }
+
+    // Spec 001 do graylog (K01): a policy logs:investigate do Cadastro lê a role do token; o token não ganha dado pessoal.
+    @Test
+    void cadastroToken_WhenUserIsLogInvestigator_CarriesTheRoleAndNoPersonalData() {
+        assertThat(realm.admin().clients().get(cadastroClient().getId()).getScopeMappings().realmLevel().listAll())
+                .extracting(RoleRepresentation::getName)
+                .containsExactlyInAnyOrder("admin", "user", "log-investigator");
+        UserRepresentation user = UserBuilder.create("token.investigator")
+                .email("token.investigator@example.com").name("Token", "Investigator").enabled(true).build();
+        String userId;
+        try (Response response = realm.admin().users().create(user)) {
+            assertThat(response.getStatus()).isEqualTo(201);
+            userId = realm.admin().users().search("token.investigator", true).getFirst().getId();
+        }
+        realm.admin().users().get(userId).roles().realmLevel()
+                .add(List.of(realm.admin().roles().get("log-investigator").toRepresentation()));
+
+        AccessToken token = realm.admin().clients().get(cadastroClient().getId()).clientScopesEvaluate()
+                .generateAccessToken("openid", userId, null);
+
+        assertThat(token.getRealmAccess().getRoles()).contains("log-investigator", "user");
+        assertThat(token.getPreferredUsername()).isEqualTo("token.investigator");
+        assertThat(token.getEmail()).isNull();
+        assertThat(token.getName()).isNull();
+        assertThat(token.getGivenName()).isNull();
+        assertThat(token.getFamilyName()).isNull();
     }
 
     @Test

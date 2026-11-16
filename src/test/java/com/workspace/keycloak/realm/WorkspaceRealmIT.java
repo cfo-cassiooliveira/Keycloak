@@ -2,7 +2,9 @@ package com.workspace.keycloak.realm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,7 +14,9 @@ import org.apache.http.client.HttpClient;
 import org.junit.jupiter.api.Test;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.models.utils.TimeBasedOTP;
 import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testframework.annotations.InjectHttpClient;
 import org.keycloak.testframework.annotations.InjectKeycloakUrls;
@@ -36,6 +40,8 @@ class WorkspaceRealmIT {
     private static final String STRONG_PASSWORD = "Workspace-Strong-1!";
     // Acima de quickLoginCheckMilliSeconds (1000 ms) do realm.
     private static final long QUICK_LOGIN_SPACING_MS = 1200;
+    private static final String LOG_INVESTIGATOR = "log-investigator";
+    private static final String TOTP_SECRET = "JBSWY3DPEHPK3PXP";
 
     @InjectRealm(fromJson = "/realm-workspace.json")
     ManagedRealm realm;
@@ -244,13 +250,8 @@ class WorkspaceRealmIT {
     void otpPage_AfterPassword_ShowsAttemptedUsernameWithRestartLink() throws Exception {
         UserRepresentation user = UserBuilder.create("otp.user")
                 .email("otp.user@example.com").name("Otp", "User").emailVerified(true).enabled(true).build();
-        // Credencial TOTP no formato de importação do Keycloak: o login pede o código depois da senha.
-        CredentialRepresentation otp = new CredentialRepresentation();
-        otp.setType("otp");
-        otp.setUserLabel("smoke");
-        otp.setSecretData("{\"value\":\"JBSWY3DPEHPK3PXP\"}");
-        otp.setCredentialData("{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}");
-        user.setCredentials(List.of(password(STRONG_PASSWORD), otp));
+        // Usuário sem role especial que configurou OTP: o login pede o código depois da senha.
+        user.setCredentials(List.of(password(STRONG_PASSWORD), totp()));
         try (Response created = realm.admin().users().create(user)) {
             assertThat(created.getStatus()).isEqualTo(201);
         }
@@ -262,6 +263,57 @@ class WorkspaceRealmIT {
         assertThat(response.body())
                 .contains("id=\"kc-attempted-username\"", "otp.user", "id=\"reset-login\"")
                 .contains("id=\"otp\"", "/login/workspace/css/workspace.css");
+    }
+
+    // Spec 001 do graylog (K01): a role de investigação em logs existe, mas nunca é dada por padrão.
+    @Test
+    void logInvestigatorRole_ExistsAndIsNotADefaultRole() {
+        RoleRepresentation role = realm.admin().roles().get(LOG_INVESTIGATOR).toRepresentation();
+        Set<RoleRepresentation> defaults = realm.admin().roles().get("default-roles-workspace").getRoleComposites();
+
+        assertThat(role.getDescription()).contains("OTP obrigatório");
+        assertThat(defaults).extracting(RoleRepresentation::getName).contains("user").doesNotContain(LOG_INVESTIGATOR);
+    }
+
+    @Test
+    void realm_UsesWorkspaceBrowserFlow() {
+        assertThat(realm.admin().toRepresentation().getBrowserFlow()).isEqualTo("workspace-browser");
+    }
+
+    @Test
+    void login_WhenLogInvestigatorHasNoOtp_RequiresOtpSetupBeforeCompleting() throws Exception {
+        createUser("investigator.no.otp", List.of(password(STRONG_PASSWORD)), LOG_INVESTIGATOR);
+
+        OidcHttp.Response response = OidcHttp.submitLoginForm(httpClient, realm.getBaseUrl(), "account-console",
+                accountRedirectUri("workspace"), "investigator.no.otp", STRONG_PASSWORD);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.body()).contains("id=\"kc-totp-settings\"", "id=\"totp\"");
+    }
+
+    // Quem tem a role e o OTP digita o código uma única vez: o subfluxo de OTP padrão não repete a pergunta.
+    @Test
+    void login_WhenLogInvestigatorHasOtp_AsksCodeOnceAndCompletes() throws Exception {
+        createUser("investigator.otp", List.of(password(STRONG_PASSWORD), totp()), LOG_INVESTIGATOR);
+        String redirectUri = accountRedirectUri("workspace");
+
+        OidcHttp.Response response = OidcHttp.submitLoginFormWithOtp(httpClient, realm.getBaseUrl(),
+                "account-console", redirectUri, "investigator.otp", STRONG_PASSWORD, currentTotpCode());
+
+        assertThat(response.status()).isEqualTo(302);
+        assertThat(response.location()).startsWith(redirectUri).contains("code=");
+    }
+
+    @Test
+    void login_WhenUserHasNeitherRoleNorOtp_CompletesWithoutOtp() throws Exception {
+        String redirectUri = accountRedirectUri("workspace");
+        createUser("plain.user", List.of(password(STRONG_PASSWORD)));
+
+        OidcHttp.Response response = OidcHttp.submitLoginForm(httpClient, realm.getBaseUrl(), "account-console",
+                redirectUri, "plain.user", STRONG_PASSWORD);
+
+        assertThat(response.status()).isEqualTo(302);
+        assertThat(response.location()).startsWith(redirectUri).contains("code=");
     }
 
     private OidcHttp.Response grant(String clientId, String username, String password) throws Exception {
@@ -305,6 +357,36 @@ class WorkspaceRealmIT {
         try (Response response = realm.admin().users().create(user)) {
             assertThat(response.getStatus()).isEqualTo(201);
         }
+    }
+
+    private void createUser(String username, List<CredentialRepresentation> credentials, String... realmRoles) {
+        UserRepresentation user = UserBuilder.create(username)
+                .email(username + "@example.com").name("Test", "User").emailVerified(true).enabled(true).build();
+        user.setCredentials(credentials);
+        String userId;
+        try (Response response = realm.admin().users().create(user)) {
+            assertThat(response.getStatus()).isEqualTo(201);
+            userId = realm.admin().users().search(username, true).getFirst().getId();
+        }
+        List<RoleRepresentation> roles = Arrays.stream(realmRoles)
+                .map(name -> realm.admin().roles().get(name).toRepresentation()).toList();
+        if (!roles.isEmpty()) {
+            realm.admin().users().get(userId).roles().realmLevel().add(roles);
+        }
+    }
+
+    // Credencial TOTP no formato de importação do Keycloak (segredo fixo, só de teste).
+    private static CredentialRepresentation totp() {
+        CredentialRepresentation otp = new CredentialRepresentation();
+        otp.setType("otp");
+        otp.setUserLabel("smoke");
+        otp.setSecretData("{\"value\":\"" + TOTP_SECRET + "\"}");
+        otp.setCredentialData("{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}");
+        return otp;
+    }
+
+    private static String currentTotpCode() {
+        return new TimeBasedOTP("HmacSHA1", 6, 30, 1).generateTOTP(TOTP_SECRET);
     }
 
     private static CredentialRepresentation password(String value) {

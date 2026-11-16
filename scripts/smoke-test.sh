@@ -94,6 +94,7 @@ check "realm usa só o listener workspace-audit" "$(contains "$realm_json" '"eve
 check "realm não grava eventos nem ações administrativas no banco" \
   "$([[ "$(contains "$realm_json" '"eventsEnabled":false')" == true && "$(contains "$realm_json" '"adminEventsEnabled":false')" == true ]] && echo true || echo false)"
 check "realm usa o tema de login workspace" "$(contains "$realm_json" '"loginTheme":"workspace"')"
+check "realm não usa e-mail como username (padrão de username ^[a-z0-9._-]+$, reconciliado pelo provisioner)" "$(contains "$realm_json" '"registrationEmailAsUsername":false')"
 server_info="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/serverinfo")"
 check "provider workspace-audit carregado no servidor" "$(contains "$server_info" '"workspace-audit"')"
 
@@ -106,8 +107,102 @@ ropc_response="$(curl -s "${BASE_URL}/realms/master/protocol/openid-connect/toke
   --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
   --data-urlencode "username=smoke.ropc" --data-urlencode "password=x")"
 check "admin-cli do master recusa password grant" "$(contains "$ropc_response" 'unauthorized_client')"
+
+# Investigação em logs (spec 001 do graylog, K01), lida pela Admin API com token novo a cada chamada.
+automation_token() {
+  printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
+    | curl -fs "${BASE_URL}/realms/master/protocol/openid-connect/token" \
+      --data-urlencode "grant_type=client_credentials" --data-urlencode "client_id=workspace-automation" \
+      --data-urlencode "client_secret@-" \
+    | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true
+}
+admin_api() {
+  local method="$1" path="$2"
+  shift 2
+  curl -fs -X "$method" -H "Authorization: Bearer $(automation_token)" -H 'Content-Type: application/json' \
+    "${BASE_URL}/admin/realms/${REALM}${path}" "$@"
+}
+# Uma execução por linha, com a configuração da condição no lugar do id (que muda quando o fluxo é recriado).
+flow_structure() {
+  local line config_id
+  admin_api GET "/authentication/flows/$1/executions" | sed 's/},{/}\n{/g' | while IFS= read -r line; do
+    config_id="$(grep -o '"authenticationConfig":"[^"]*"' <<<"$line" | cut -d'"' -f4 || true)"
+    sed -E 's/"(id|flowId|authenticationConfig)":"[^"]*",?//g' <<<"$line"
+    if [[ -n "$config_id" ]]; then
+      echo "  config: $(admin_api GET "/authentication/config/${config_id}" | grep -o '"config":{[^}]*}')"
+    fi
+  done
+}
+investigation_state() {
+  local cadastro_id
+  cadastro_id="$(admin_api GET "/clients?clientId=cadastro" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+  for path in /roles/log-investigator /roles/default-roles-workspace/composites/realm \
+    "/clients/${cadastro_id}/scope-mappings/realm" /authentication/flows/workspace-browser/executions \
+    /authentication/flows/workspace-reset-credentials/executions; do
+    echo "${path}: $(admin_api GET "$path" || echo MISSING)"
+  done
+  admin_api GET "" | grep -o '"browserFlow":"[^"]*"\|"resetCredentialsFlow":"[^"]*"\|"acr.loa.map":"[^}]*}"' \
+    || echo "bindings: MISSING"
+}
+# Estrutura sem ids: usada para comparar um fluxo recriado do zero com o anterior.
+flows_without_ids() {
+  flow_structure workspace-browser
+  flow_structure workspace-reset-credentials
+  admin_api GET "" | grep -o '"browserFlow":"[^"]*"\|"resetCredentialsFlow":"[^"]*"' || true
+}
+state_before="$(investigation_state)"
 check "provisioner é idempotente (reexecução sem erro)" \
   "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
+state_after="$(investigation_state)"
+check "reexecução do provisioner não altera role, fluxos de login e reset nem escopo do cadastro" \
+  "$([[ "$state_before" == "$state_after" ]] && echo true || echo false)"
+
+echo "== Investigação em logs (spec 001 do graylog)"
+check "role log-investigator existe" "$(contains "$state_after" '"name":"log-investigator"')"
+check "log-investigator não é role padrão" \
+  "$(grep '^/roles/default-roles-workspace' <<<"$state_after" | grep -q 'log-investigator' && echo false || echo true)"
+check "client cadastro tem log-investigator no escopo do client" \
+  "$(grep '^/clients/.*/scope-mappings/realm' <<<"$state_after" | grep -q '"name":"log-investigator"' && echo true || echo false)"
+check "realm usa os fluxos workspace-browser e workspace-reset-credentials" \
+  "$([[ "$(contains "$state_after" '"browserFlow":"workspace-browser"')" == true && "$(contains "$state_after" '"resetCredentialsFlow":"workspace-reset-credentials"')" == true ]] && echo true || echo false)"
+check "acr password = LoA 1 e otp = LoA 2 (step-up)" \
+  "$(contains "$state_after" '"acr.loa.map":"{\\"password\\":1,\\"otp\\":2}"')"
+browser_flow="$(flow_structure workspace-browser)"
+reset_flow="$(flow_structure workspace-reset-credentials)"
+# Condição pela role log-investigator (sem negação) obrigatória, seguida de OTP obrigatório, no login e no reset.
+role_then_otp() {
+  grep -A2 '"providerId":"conditional-user-role"' <<<"$1" | tr -d '\n' \
+    | grep -q '"requirement":"REQUIRED".*"config":{"condUserRole":"log-investigator","negate":"false"}.*"providerId":"\(conditional-credential\|auth-otp-form\)"' \
+    && echo true || echo false
+}
+check "login: OTP obrigatório para log-investigator (condição REQUIRED, role sem negação, OTP em seguida)" \
+  "$(role_then_otp "$browser_flow")"
+check "login: step-up LoA 2 com OTP obrigatório e max-age 0" \
+  "$(grep -A2 '"loa-condition-level":"2"' <<<"$browser_flow" | tr -d '\n' | grep -q '"loa-max-age":"0".*"requirement":"REQUIRED".*"providerId":"auth-otp-form"' && echo true || echo false)"
+check "reset de senha: OTP obrigatório para log-investigator" "$(role_then_otp "$reset_flow")"
+
+# Reconciliação do provisioner: fluxo de login alterado à mão (Admin Console), fluxo de reset apagado e um staging
+# largado por execução interrompida. O provisioner recria os dois iguais e religa. Só ambiente local: durante a
+# checagem o reset usa o fluxo padrão do Keycloak.
+flows_reference="$(flows_without_ids)"
+admin_api PUT "" -d '{"resetCredentialsFlow":"reset credentials"}' >/dev/null
+reset_id="$(admin_api GET /authentication/flows | sed 's/},{/}\n{/g' | grep '"alias":"workspace-reset-credentials"' \
+  | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+admin_api DELETE "/authentication/flows/${reset_id}" >/dev/null || true
+otp_by_role_id="$(admin_api GET /authentication/flows/workspace-browser-v1-otp-by-role/executions | sed 's/},{/}\n{/g' \
+  | grep '"providerId":"auth-otp-form"' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+admin_api PUT /authentication/flows/workspace-browser-v1-otp-by-role/executions \
+  -d "{\"id\":\"${otp_by_role_id}\",\"requirement\":\"DISABLED\",\"priority\":30}" >/dev/null || true
+admin_api POST /authentication/flows \
+  -d '{"alias":"workspace-browser-staging","providerId":"basic-flow","topLevel":true,"builtIn":false}' >/dev/null || true
+check "login com OTP pela role desligado à mão (pré-condição da reconciliação)" \
+  "$(contains "$(flow_structure workspace-browser)" '"requirement":"DISABLED"')"
+check "provisioner reconcilia fluxo alterado à mão e recria o apagado" \
+  "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
+check "fluxos reconciliados iguais aos versionados e religados ao realm" \
+  "$([[ "$(flows_without_ids)" == "$flows_reference" ]] && echo true || echo false)"
+check "nada sobra com sufixo -staging (fluxos e configs)" \
+  "$([[ "$(contains "$(admin_api GET /authentication/flows)" '-staging')" == false ]] && echo true || echo false)"
 
 echo "== Cadastro (spec 001 do cadastro)"
 cadastro_token() {

@@ -5,6 +5,7 @@
   "sslRequired": "external",
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
+  "registrationEmailAsUsername": false,
   "rememberMe": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
@@ -53,6 +54,10 @@
     "realm": [
       { "name": "admin", "description": "Administrador: listagem de usuários; OTP obrigatório." },
       { "name": "user", "description": "Usuário: acesso ao próprio perfil." },
+      {
+        "name": "log-investigator",
+        "description": "Investigação em logs: gera consultas por token; OTP obrigatório."
+      },
       { "name": "offline_access", "description": "${role_offline-access}" },
       { "name": "uma_authorization", "description": "${role_uma_authorization}" },
       {
@@ -121,7 +126,7 @@
   ],
 
   "scopeMappings": [
-    { "client": "cadastro", "roles": ["admin", "user"] }
+    { "client": "cadastro", "roles": ["admin", "user", "log-investigator"] }
   ],
   "clientScopeMappings": {
     "realm-management": [
@@ -135,6 +140,128 @@
       "serviceAccountClientId": "cadastro",
       "clientRoles": { "realm-management": ["view-users", "query-users", "manage-users"] }
     }
+  ],
+
+  "attributes": { "acr.loa.map": "{\"password\":1,\"otp\":2}" },
+  "browserFlow": "workspace-browser",
+  "resetCredentialsFlow": "workspace-reset-credentials",
+  "authenticationFlows": [
+    {
+      "alias": "workspace-browser",
+      "description": "Login do navegador: step-up por LoA (senha, OTP) e OTP obrigatório para log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-cookie", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 10, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "ALTERNATIVE", "priority": 20, "flowAlias": "workspace-browser-v1-forms", "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-browser-v1-forms",
+      "description": "Formulários de login por nível de autenticação.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 10, "flowAlias": "workspace-browser-v1-password", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 20, "flowAlias": "workspace-browser-v1-step-up-otp", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 30, "flowAlias": "workspace-browser-v1-otp-by-role", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 40, "flowAlias": "workspace-browser-v1-otp-configured", "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-browser-v1-password",
+      "description": "LoA 1: usuário e senha.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-level-of-authentication", "authenticatorConfig": "workspace-browser-v1-loa-password", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-username-password-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-browser-v1-step-up-otp",
+      "description": "LoA 2 (acr otp): OTP nesta autenticação.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-level-of-authentication", "authenticatorConfig": "workspace-browser-v1-loa-otp", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-browser-v1-otp-by-role",
+      "description": "OTP obrigatório para log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-browser-v1-role-log-investigator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-browser-v1-otp-not-used-by-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-browser-v1-otp-configured",
+      "description": "OTP para quem já o configurou (como no browser padrão).",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-browser-v1-otp-not-used-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-reset-credentials",
+      "description": "Reset de senha por e-mail; OTP obrigatório para log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "reset-credentials-choose-user", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "reset-credential-email", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "reset-password", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 40, "flowAlias": "workspace-reset-v1-otp-by-role", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 50, "flowAlias": "workspace-reset-v1-otp-configured", "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-reset-v1-otp-by-role",
+      "description": "OTP obrigatório para log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-reset-v1-role-log-investigator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-reset-v1-otp-configured",
+      "description": "Reset padrão do OTP configurado, exceto log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-reset-v1-not-log-investigator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "reset-otp", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    { "alias": "workspace-browser-v1-loa-password", "config": { "loa-condition-level": "1", "loa-max-age": "36000" } },
+    { "alias": "workspace-browser-v1-loa-otp", "config": { "loa-condition-level": "2", "loa-max-age": "0" } },
+    { "alias": "workspace-browser-v1-role-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "false" } },
+    { "alias": "workspace-browser-v1-otp-not-used-by-role", "config": { "credentials": "otp", "included": "false" } },
+    { "alias": "workspace-browser-v1-otp-not-used-configured", "config": { "credentials": "otp", "included": "false" } },
+    { "alias": "workspace-reset-v1-role-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "false" } },
+    { "alias": "workspace-reset-v1-not-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "true" } }
   ],
 
   "clientProfiles": {
