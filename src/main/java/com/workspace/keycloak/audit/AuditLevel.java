@@ -5,5 +5,7 @@ public enum AuditLevel {
     /** Operação concluída como esperado. */
     INFO,
     /** Falha esperada de autenticação ou de operação administrativa. */
-    WARN
+    WARN,
+    /** Falha inesperada que exige atenção da operação (ex.: Legado indisponível). */
+    ERROR
 }

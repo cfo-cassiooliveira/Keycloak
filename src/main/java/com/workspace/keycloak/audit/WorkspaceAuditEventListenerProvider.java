@@ -37,6 +37,13 @@ public final class WorkspaceAuditEventListenerProvider implements EventListenerP
         writeSafely(() -> mapper.map(event));
     }
 
+    /**
+     * Registra um evento de migração (a SPI de migração não passa pelo {@code EventBuilder}). Nunca propaga exceção.
+     */
+    public void onMigrationEvent(MigrationAuditEntry entry) {
+        writeSafely(() -> mapper.map(entry));
+    }
+
     @Override
     public void close() {
         // Sem recursos por sessão para liberar.

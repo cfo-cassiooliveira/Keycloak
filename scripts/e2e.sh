@@ -24,6 +24,14 @@ else
   network_args=(-e E2E_FORWARD_TO=host.docker.internal:8180)
 fi
 
+# O teste "update password" cria um usuário pelo Admin API com a conta de serviço workspace-automation. O segredo vem do
+# .env (sem imprimir) e é repassado só por nome (-e VAR), nunca na linha de comando. Sem .env, esse teste é ignorado.
+if [[ -f "${project_root}/.env" ]]; then
+  KC_AUTOMATION_CLIENT_SECRET="$(grep -m1 '^KC_AUTOMATION_CLIENT_SECRET=' "${project_root}/.env" | cut -d= -f2- | tr -d '\r')"
+  export KC_AUTOMATION_CLIENT_SECRET
+  network_args+=(-e KC_AUTOMATION_CLIENT_SECRET)
+fi
+
 # node_modules fica num volume Docker (não polui o repositório); npm ci respeita o package-lock.json.
 MSYS_NO_PATHCONV=1 docker run --rm --ipc=host \
   "${network_args[@]}" \

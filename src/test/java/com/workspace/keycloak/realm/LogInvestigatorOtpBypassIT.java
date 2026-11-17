@@ -70,7 +70,7 @@ class LogInvestigatorOtpBypassIT {
     private static final String CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     private static final Pattern LOGIN_FORM_ACTION = Pattern.compile("<form id=\"kc-form-login\" action=\"([^\"]+)\"");
     private static final Pattern OTP_FORM_ACTION = Pattern.compile("<form id=\"kc-otp-login-form\"[^>]*action=\"([^\"]+)\"");
-    private static final Pattern RESET_LINK = Pattern.compile("href=\"([^\"]*/login-actions/reset-credentials[^\"]*)\"");
+    private static final Pattern RESET_LINK = Pattern.compile("href=\"([^\"]{0,500}/login-actions/reset-credentials[^\"]{0,500})\"");
     private static final Pattern RESET_FORM_ACTION =
             Pattern.compile("<form id=\"kc-reset-password-form\"[^>]*action=\"([^\"]+)\"");
     private static final Pattern ACTION_TOKEN_LINK = Pattern.compile("(http[^\\s\"<>]*/login-actions/action-token\\?[^\\s\"<>]*)");
