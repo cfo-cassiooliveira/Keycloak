@@ -186,7 +186,7 @@ drop_staging_suffix() {
 # assinatura e só então liga o staging, apaga a versão anterior (o delete leva subfluxos e configs) e tira o sufixo de
 # tudo. Staging largado por execução interrompida é apagado. Mudança de estrutura: nova versão nos nomes (-v1- → -v2-).
 ensure_flow() {
-  local alias="$1" builder="$2" binding="$3" expected staging="$1-staging" id flow_id config_id
+  local alias="$1" builder="$2" binding="$3" fallback="$5" expected staging="$1-staging" id flow_id config_id
   expected="$("$4")"
   id="$(top_flow_id "$alias")"
   if [[ -n "$id" && "$(flow_signature "$alias")" == "$expected" ]]; then
@@ -195,6 +195,12 @@ ensure_flow() {
   fi
   id="$(top_flow_id "$staging")"
   if [[ -n "$id" ]]; then
+    # Staging largado (execução interrompida ou alterado à mão) pode estar ligado ao realm: religa ao fluxo anterior ou
+    # ao padrão do Keycloak ANTES de apagar, senão o delete falha ("currently in use") e o realm fica sem fluxo válido.
+    if [[ "$(kc get realms/workspace --fields "$binding" --format csv --noquotes)" == "$staging" ]]; then
+      if [[ -n "$(top_flow_id "$alias")" ]]; then fallback="$alias"; fi
+      kc update realms/workspace -s "${binding}=${fallback}" >/dev/null
+    fi
     kc delete "authentication/flows/${id}" -r workspace >/dev/null
     log "workspace realm: leftover flow removed: ${staging}"
   fi
@@ -313,8 +319,8 @@ SIGNATURE
 # Step-up no realm: acr "password" = LoA 1 e "otp" = LoA 2 (contrato com o Cadastro, ver README).
 ensure_workspace_auth_flows() {
   kc update realms/workspace -f - >/dev/null <<<'{"attributes":{"acr.loa.map":"{\"password\":1,\"otp\":2}"}}'
-  ensure_flow workspace-browser build_browser_flow browserFlow expected_browser_flow
-  ensure_flow workspace-reset-credentials build_reset_credentials_flow resetCredentialsFlow expected_reset_credentials_flow
+  ensure_flow workspace-browser build_browser_flow browserFlow expected_browser_flow browser
+  ensure_flow workspace-reset-credentials build_reset_credentials_flow resetCredentialsFlow expected_reset_credentials_flow "reset credentials"
 }
 
 workspace_client_id() {

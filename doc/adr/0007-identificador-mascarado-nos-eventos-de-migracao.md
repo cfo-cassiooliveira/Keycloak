@@ -4,6 +4,7 @@
 - **Data**: 2026-11-13
 - **Decisores**: Cassio Oliveira (responsável técnico)
 - **Artigos da Constituição relacionados**: Art. IV.1 (LGPD), Art. IV.6, Art. VI.1
+- **Relacionados**: [ADR-0002 do graylog](../../../graylog/docs/adr/0002-mascaramento-parcial-lgpd.md) (máscara por nome de campo no pipeline) e [ADR-0003 do graylog](../../../graylog/docs/adr/0003-pseudonimizacao-hmac-pesquisavel.md) (pseudonimização: o Keycloak **não** gera token; a chave HMAC fica só no legado e no cadastro)
 
 ## Contexto
 

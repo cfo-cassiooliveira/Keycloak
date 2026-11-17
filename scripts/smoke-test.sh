@@ -150,9 +150,14 @@ flows_without_ids() {
   flow_structure workspace-reset-credentials
   admin_api GET "" | grep -o '"browserFlow":"[^"]*"\|"resetCredentialsFlow":"[^"]*"' || true
 }
+# Roda o provisioner mostrando a cauda da saída quando falha (diagnóstico no próprio smoke).
+run_provisioner() {
+  local output
+  output="$(docker compose run --rm --no-deps provisioner 2>&1)" || { tail -15 <<<"$output" >&2; return 1; }
+}
 state_before="$(investigation_state)"
 check "provisioner é idempotente (reexecução sem erro)" \
-  "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
+  "$(run_provisioner && echo true || echo false)"
 state_after="$(investigation_state)"
 check "reexecução do provisioner não altera role, fluxos de login e reset nem escopo do cadastro" \
   "$([[ "$state_before" == "$state_after" ]] && echo true || echo false)"
@@ -198,11 +203,26 @@ admin_api POST /authentication/flows \
 check "login com OTP pela role desligado à mão (pré-condição da reconciliação)" \
   "$(contains "$(flow_structure workspace-browser)" '"requirement":"DISABLED"')"
 check "provisioner reconcilia fluxo alterado à mão e recria o apagado" \
-  "$(docker compose run --rm --no-deps provisioner >/dev/null 2>&1 && echo true || echo false)"
+  "$(run_provisioner && echo true || echo false)"
 check "fluxos reconciliados iguais aos versionados e religados ao realm" \
   "$([[ "$(flows_without_ids)" == "$flows_reference" ]] && echo true || echo false)"
 check "nada sobra com sufixo -staging (fluxos e configs)" \
   "$([[ "$(contains "$(admin_api GET /authentication/flows)" '-staging')" == false ]] && echo true || echo false)"
+
+# Regressão (QA X01): promoção interrompida deixa browserFlow ligado ao staging e sem workspace-browser. O delete do
+# staging falhava ("currently in use") a cada execução; o provisioner agora religa antes de apagar e reconstrói.
+admin_api POST /authentication/flows \
+  -d '{"alias":"workspace-browser-staging","providerId":"basic-flow","topLevel":true,"builtIn":false}' >/dev/null || true
+admin_api PUT "" -d '{"browserFlow":"workspace-browser-staging"}' >/dev/null
+browser_id="$(admin_api GET /authentication/flows | sed 's/},{/}\n{/g' | grep '"alias":"workspace-browser"' \
+  | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+admin_api DELETE "/authentication/flows/${browser_id}" >/dev/null || true
+check "realm degradado (browserFlow no staging, sem workspace-browser) é a pré-condição" \
+  "$([[ "$(contains "$(admin_api GET "")" '"browserFlow":"workspace-browser-staging"')" == true ]] && echo true || echo false)"
+check "provisioner repara realm com browserFlow ligado ao staging" \
+  "$(run_provisioner && echo true || echo false)"
+check "realm reparado: fluxos iguais aos versionados, religados e sem -staging" \
+  "$([[ "$(flows_without_ids)" == "$flows_reference" && "$(contains "$(admin_api GET /authentication/flows)" '-staging')" == false ]] && echo true || echo false)"
 
 echo "== Cadastro (spec 001 do cadastro)"
 cadastro_token() {

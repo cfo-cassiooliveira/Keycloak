@@ -94,9 +94,11 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - Fluxos no `provision.sh` por `ensure_flow`: fluxo ausente ou diferente da assinatura esperada (inclusive alterado à
   mão no Admin Console) é reconstruído em `<alias>-staging`, com subfluxos e configs também com `-staging` (não colidem
   com os do fluxo em uso); só depois de conferir a assinatura ele é ligado ao realm, a versão anterior é apagada e o
-  sufixo é retirado; staging largado é apagado. Mudou a estrutura? Nova versão nos nomes de subfluxos/configs
+  sufixo é retirado. Staging largado é apagado, mas **antes** o realm é religado ao fluxo anterior (ou ao padrão `browser`
+  / `reset credentials`) se ainda apontar para ele: o Keycloak recusa apagar fluxo em uso, e o realm nunca fica sem
+  fluxo válido. Mudou a estrutura? Nova versão nos nomes de subfluxos/configs
   (`-v1-` → `-v2-`), assinatura atualizada e o mesmo no `realm-workspace.json`. O smoke altera o fluxo de login à mão,
-  apaga o de reset e confere que o provisioner os deixa iguais aos versionados.
+  apaga o de reset e deixa o realm degradado (browserFlow no staging, sem `workspace-browser`) e confere que o provisioner repara tudo, deixando-os iguais aos versionados.
 - Nenhum registro de auditoria se perde: falha no Graylog vai para o fallback em arquivo e o container loga o erro;
   o envio ao Graylog é assíncrono e nunca atrasa o login (ADR-0004).
 - O listener nunca propaga exceção para o fluxo de login.
