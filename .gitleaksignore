@@ -1,0 +1,10 @@
+# Falsos positivos do gitleaks (security.md). Cada entrada tem o motivo; fingerprint = commit:arquivo:regra:linha.
+#
+# Chave HMAC FICTÍCIA e pública dos vetores de teste da assinatura (ADR-0005 do legado), copiada do legado: nunca foi
+# configurada em ambiente algum (as chaves reais ficam no .env, emitidas pelo scripts/internal-credentials.sh do legado).
+0fa238130a4ce1e8a4d8ad9622cfbc55483ab056:src/test/resources/hmac-test-vectors.json:generic-api-key:3
+0fa238130a4ce1e8a4d8ad9622cfbc55483ab056:src/test/java/com/workspace/keycloak/legacy/HttpLegacyUserClientTest.java:generic-api-key:33
+0fa238130a4ce1e8a4d8ad9622cfbc55483ab056:src/test/java/com/workspace/keycloak/legacy/LegacyClientSettingsTest.java:generic-api-key:20
+# Teste com Mockito: "credential" é um mock e "weak" é a senha de teste, usada para exercitar o caminho de senha fora da
+# política do realm. Não é segredo.
+0fa238130a4ce1e8a4d8ad9622cfbc55483ab056:src/test/java/com/workspace/keycloak/legacy/KeycloakMigrationUserStoreTest.java:generic-api-key:203
