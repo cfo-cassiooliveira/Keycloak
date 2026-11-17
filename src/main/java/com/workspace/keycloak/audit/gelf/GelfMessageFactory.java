@@ -19,14 +19,15 @@ import com.workspace.keycloak.audit.AuditRecord;
  * {@code _campo}; os campos padrão do serviço (nome, versão, ambiente, host) são acrescentados.</p>
  *
  * <p><b>Dados pessoais (LGPD)</b>: a auditoria não leva dado pessoal (ADR-0002 deste projeto). Uma exceção só vale
- * com ADR aceito (o {@code masked_login} do ADR-0007 ainda está proposto). Quando houver, o campo vai <b>sempre como
- * campo próprio</b>, nunca dentro do {@code short_message}, e o nome dele entra antes nas listas {@code LGPD_*} do
+ * com ADR (o {@code masked_login} do ADR-0007, só nos eventos de migração). O campo vai <b>sempre como
+ * campo próprio</b>, nunca dentro do {@code short_message}, e o nome dele está nas listas {@code LGPD_*} do
  * {@code provision.sh} do projeto graylog, que mascara pelo nome do campo. O Keycloak não gera o campo
  * {@code _token} de pseudonimização: a chave HMAC fica só no legado e no cadastro (ADR-0003 do graylog).</p>
  */
 public final class GelfMessageFactory {
 
     /** Níveis syslog usados pelo GELF. */
+    static final int LEVEL_ERROR = 3;
     static final int LEVEL_WARNING = 4;
     static final int LEVEL_INFORMATIONAL = 6;
 
@@ -44,7 +45,7 @@ public final class GelfMessageFactory {
         gelf.put("host", serviceInfo.host());
         gelf.put("short_message", shortMessage(auditRecord));
         gelf.put("timestamp", timestamp(auditRecord));
-        gelf.put("level", auditRecord.level() == AuditLevel.WARN ? LEVEL_WARNING : LEVEL_INFORMATIONAL);
+        gelf.put("level", gelfLevel(auditRecord.level()));
         gelf.put("_service_name", serviceInfo.serviceName());
         gelf.put("_service_version", serviceInfo.serviceVersion());
         gelf.put("_keycloak_version", serviceInfo.keycloakVersion());
@@ -57,6 +58,14 @@ public final class GelfMessageFactory {
         } catch (IOException e) {
             throw new UncheckedIOException("GELF message serialization failed", e);
         }
+    }
+
+    private static int gelfLevel(AuditLevel level) {
+        return switch (level) {
+            case ERROR -> LEVEL_ERROR;
+            case WARN -> LEVEL_WARNING;
+            case INFO -> LEVEL_INFORMATIONAL;
+        };
     }
 
     // Texto curto e legível na lista do Graylog: tipo/operação e o erro, sem nenhum dado pessoal.

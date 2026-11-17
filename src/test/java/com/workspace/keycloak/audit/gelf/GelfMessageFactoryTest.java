@@ -80,6 +80,26 @@ class GelfMessageFactoryTest {
         assertThat(new BigDecimal(gelf.get("timestamp").toString())).isPositive();
     }
 
+    @Test
+    void toGelf_WhenMigrationEventHasMaskedLogin_SendsItAsOwnFieldNeverInShortMessage() throws Exception {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("kind", "migration");
+        fields.put("type", "LEGACY_UNAVAILABLE");
+        fields.put("masked_login", "ana***@gmail");
+        fields.put("error", "timeout");
+
+        String json = factory.toGelf(new AuditRecord(AuditLevel.ERROR, fields));
+        Map<String, Object> gelf = parse(json);
+
+        assertThat(gelf)
+                .containsEntry("level", 3)
+                .containsEntry("_masked_login", "ana***@gmail")
+                .containsEntry("short_message", "Keycloak migration event LEGACY_UNAVAILABLE failed: timeout")
+                .doesNotContainKey("_masked_login_token")
+                .doesNotContainKey("_token");
+        assertThat(gelf.get("short_message").toString()).doesNotContain("ana");
+    }
+
     private static AuditRecord userRecord(AuditLevel level, String error) {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("audit_schema", 1);

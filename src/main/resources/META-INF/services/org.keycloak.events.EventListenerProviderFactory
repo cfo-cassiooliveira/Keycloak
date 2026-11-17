@@ -1,1 +1,2 @@
 com.workspace.keycloak.audit.WorkspaceAuditEventListenerProviderFactory
+com.workspace.keycloak.legacy.LegacyMigrationCompletionListenerFactory

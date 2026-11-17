@@ -1,0 +1,2 @@
+com.workspace.keycloak.legacy.LegacyUsernamePasswordFormFactory
+com.workspace.keycloak.legacy.LegacyResetChooseUserFactory

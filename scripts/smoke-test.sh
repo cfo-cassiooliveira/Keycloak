@@ -90,13 +90,19 @@ admin_token="$(printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
   | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true)"
 check "conta de serviço workspace-automation obtém token (client credentials)" "$([[ -n "$admin_token" ]] && echo true || echo false)"
 realm_json="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/${REALM}")"
-check "realm usa só o listener workspace-audit" "$(contains "$realm_json" '"eventsListeners":\["workspace-audit"\]')"
+# O Keycloak devolve a lista de listeners em ordem qualquer: confere os dois e que não há outro (jboss-logging grava username e IP).
+event_listeners="$(grep -o '"eventsListeners":\[[^]]*\]' <<<"$realm_json" || true)"
+check "realm usa os listeners workspace-audit e legacy-migration-completion" \
+  "$([[ "$(contains "$event_listeners" '"workspace-audit"')" == true && "$(contains "$event_listeners" '"legacy-migration-completion"')" == true \
+    && "$(contains "$event_listeners" 'jboss-logging')" == false ]] && echo true || echo false)"
 check "realm não grava eventos nem ações administrativas no banco" \
   "$([[ "$(contains "$realm_json" '"eventsEnabled":false')" == true && "$(contains "$realm_json" '"adminEventsEnabled":false')" == true ]] && echo true || echo false)"
 check "realm usa o tema de login workspace" "$(contains "$realm_json" '"loginTheme":"workspace"')"
 check "realm não usa e-mail como username (padrão de username ^[a-z0-9._-]+$, reconciliado pelo provisioner)" "$(contains "$realm_json" '"registrationEmailAsUsername":false')"
 server_info="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/serverinfo")"
 check "provider workspace-audit carregado no servidor" "$(contains "$server_info" '"workspace-audit"')"
+check "providers legacy-reset-choose-user e legacy-migration-completion carregados" \
+  "$([[ "$(contains "$server_info" '"legacy-reset-choose-user"')" == true && "$(contains "$server_info" '"legacy-migration-completion"')" == true ]] && echo true || echo false)"
 
 echo "== Realm master (provisioner)"
 master_json="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/master")"
@@ -194,9 +200,9 @@ admin_api PUT "" -d '{"resetCredentialsFlow":"reset credentials"}' >/dev/null
 reset_id="$(admin_api GET /authentication/flows | sed 's/},{/}\n{/g' | grep '"alias":"workspace-reset-credentials"' \
   | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
 admin_api DELETE "/authentication/flows/${reset_id}" >/dev/null || true
-otp_by_role_id="$(admin_api GET /authentication/flows/workspace-browser-v1-otp-by-role/executions | sed 's/},{/}\n{/g' \
+otp_by_role_id="$(admin_api GET /authentication/flows/workspace-browser-v2-otp-by-role/executions | sed 's/},{/}\n{/g' \
   | grep '"providerId":"auth-otp-form"' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
-admin_api PUT /authentication/flows/workspace-browser-v1-otp-by-role/executions \
+admin_api PUT /authentication/flows/workspace-browser-v2-otp-by-role/executions \
   -d "{\"id\":\"${otp_by_role_id}\",\"requirement\":\"DISABLED\",\"priority\":30}" >/dev/null || true
 admin_api POST /authentication/flows \
   -d '{"alias":"workspace-browser-staging","providerId":"basic-flow","topLevel":true,"builtIn":false}' >/dev/null || true

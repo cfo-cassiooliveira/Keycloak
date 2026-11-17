@@ -12,6 +12,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.apache.http.client.HttpClient;
 import org.junit.jupiter.api.Test;
+import org.keycloak.representations.idm.AuthenticationExecutionInfoRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.models.utils.TimeBasedOTP;
@@ -56,7 +57,7 @@ class WorkspaceRealmIT {
     void realm_UsesOnlyWorkspaceAuditListenerAndStoresNoUserEvents() {
         RealmRepresentation representation = realm.admin().toRepresentation();
 
-        assertThat(representation.getEventsListeners()).containsExactly("workspace-audit");
+        assertThat(representation.getEventsListeners()).containsExactlyInAnyOrder("workspace-audit", "legacy-migration-completion");
         assertThat(representation.isEventsEnabled()).isFalse();
         // O listener recebe as ações administrativas sem gravá-las no banco, onde ficaria o IP (R2).
         assertThat(representation.isAdminEventsEnabled()).isFalse();
@@ -314,6 +315,49 @@ class WorkspaceRealmIT {
 
         assertThat(response.status()).isEqualTo(302);
         assertThat(response.location()).startsWith(redirectUri).contains("code=");
+    }
+
+    // RN-12: admin precisa de OTP para concluir o login; sem OTP cadastrado, configura antes de entrar.
+    @Test
+    void login_WhenAdminHasNoOtp_RequiresOtpSetupBeforeCompleting() throws Exception {
+        createUser("admin.no.otp", List.of(password(STRONG_PASSWORD)), "admin");
+
+        OidcHttp.Response response = OidcHttp.submitLoginForm(httpClient, realm.getBaseUrl(), "account-console",
+                accountRedirectUri("workspace"), "admin.no.otp", STRONG_PASSWORD);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.body()).contains("id=\"kc-totp-settings\"", "id=\"totp\"");
+    }
+
+    @Test
+    void login_WhenAdminHasOtp_AsksCodeOnceAndCompletes() throws Exception {
+        createUser("admin.otp", List.of(password(STRONG_PASSWORD), totp()), "admin");
+        String redirectUri = accountRedirectUri("workspace");
+
+        OidcHttp.Response response = OidcHttp.submitLoginFormWithOtp(httpClient, realm.getBaseUrl(),
+                "account-console", redirectUri, "admin.otp", STRONG_PASSWORD, currentTotpCode());
+
+        assertThat(response.status()).isEqualTo(302);
+        assertThat(response.location()).startsWith(redirectUri).contains("code=");
+    }
+
+    // O reset conclui o login: admin confirma o OTP (sem pedir duas vezes a quem também é log-investigator) e o
+    // "Reset OTP" padrão fica só para quem não tem nenhuma das duas roles.
+    @Test
+    void resetFlow_RequiresOtpForAdminAndKeepsDefaultResetOtpForOthers() {
+        List<AuthenticationExecutionInfoRepresentation> adminOtp =
+                realm.admin().flows().getExecutions("workspace-reset-v3-otp-by-admin");
+        List<AuthenticationExecutionInfoRepresentation> defaultOtp =
+                realm.admin().flows().getExecutions("workspace-reset-v3-otp-configured");
+
+        assertThat(adminOtp).extracting(AuthenticationExecutionInfoRepresentation::getProviderId)
+                .containsExactly("conditional-user-role", "conditional-user-role", "auth-otp-form");
+        assertThat(adminOtp).allSatisfy(e -> assertThat(e.getRequirement()).isEqualTo("REQUIRED"));
+        assertThat(defaultOtp).extracting(AuthenticationExecutionInfoRepresentation::getProviderId)
+                .containsExactly("conditional-user-configured", "conditional-user-role", "conditional-user-role",
+                        "reset-otp");
+        assertThat(realm.admin().toRepresentation().getResetCredentialsFlow())
+                .isEqualTo("workspace-reset-credentials");
     }
 
     private OidcHttp.Response grant(String clientId, String username, String password) throws Exception {

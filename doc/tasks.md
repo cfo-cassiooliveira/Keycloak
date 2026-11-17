@@ -95,7 +95,7 @@ Comando padrão de verificação: `scripts/build.sh` (= `./mvnw -B verify` no co
       e rodar o Quality Gate (Art. V.2).
 - [x] **P2** — (feito na 0.3.0, ADR-0004) `docker-compose.graylog.yml` (GELF driver, tag `keycloak`) + stream, extração do JSON de auditoria e alertas
       (rajada de `LOGIN_ERROR`, erro do listener) no `graylog/provisioning/provision.sh`.
-- [ ] **P3** — Spec de migração dos usuários do `legado` (importação `pbkdf2-sha512`; validar se o tamanho de chave de 256 bits
+- [x] **P3** — (feito na spec 001 do `cadastro`: migração sob demanda por Authenticator, ADR-0006/0007; o Legado valida a senha, sem importar hash) Spec de migração dos usuários do `legado` (importação `pbkdf2-sha512`; validar se o tamanho de chave de 256 bits
       do Identity V3 é aceito pelo hash provider nativo, senão Password Hash SPI próprio).
 
 ## Definition of Done da feature

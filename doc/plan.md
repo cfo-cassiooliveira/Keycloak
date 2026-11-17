@@ -180,3 +180,5 @@ Observações:
 
 - **ADR-0001**: Extensões do Keycloak em Java 21 + Maven, build/testes em container — *Proposto*
 - **ADR-0002**: Auditoria de eventos do Keycloak sem dados pessoais (listener próprio com allowlist) — *Proposto*
+- **ADR-0006**: Migração sob demanda dos usuários do Legado por Authenticator + API do Legado — *Aceito* (2026-11-17)
+- **ADR-0007**: Identificador mascarado nos eventos de migração (exceção ao ADR-0002) — *Aceito* (2026-11-17)

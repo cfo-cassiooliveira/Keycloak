@@ -7,6 +7,9 @@ extensões (SPIs) do Workspace:
 |---|---|---|
 | `workspace-audit` | Event Listener | Log JSON de auditoria (login, falhas, ações administrativas) **sem dados pessoais** ([ADR-0002](doc/adr/0002-auditoria-eventos-sem-dados-pessoais.md)) |
 | `workspace` | Theme (login) | Telas de login em Bootstrap 5, responsivas, com a identidade do Workspace (logo CFO e paleta céu/pervinca/água) e PT-BR por padrão ([ADR-0003](doc/adr/0003-tema-login-bootstrap.md)) |
+| `legacy-username-password-form` | Authenticator | Login com migração sob demanda do Legado: usuário que só existe no Legado e acerta a senha é criado no Keycloak com os dados e a senha ([ADR-0006](doc/adr/0006-migracao-sob-demanda-do-legado.md)) |
+| `legacy-reset-choose-user` | Authenticator | "Esqueci minha senha" para quem só existe no Legado: cria o usuário sem senha e segue o reset padrão por e-mail (resposta idêntica para qualquer entrada) |
+| `legacy-migration-completion` | Event Listener | Avisa o Legado quando a senha é definida por reset ou atualização (`RESET_PASSWORD`, `UPDATE_PASSWORD`, `UPDATE_CREDENTIAL`); a marcação do login migrado é feita pelo próprio fluxo, logo após o commit |
 
 Os logs vão para o **Graylog** com fallback local da auditoria ([ADR-0004](doc/adr/0004-logs-graylog-com-fallback.md)) e o código é
 analisado no **SonarQube** (projeto `keycloak`).
@@ -35,7 +38,7 @@ winget install EclipseAdoptium.Temurin.21.JDK
 ./scripts/identity-network.sh      # cria a rede workspace-identity, compartilhada com cadastro e legado (idempotente)
 docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + Mailpit + provisioner do realm master
 ./scripts/smoke-test.sh            # valida saúde, realms, provisioner, providers, tema e auditoria
-./scripts/e2e.sh                   # testes E2E do tema (Playwright em navegador real, em container)
+./scripts/e2e.sh                   # E2E do tema (Playwright em container); lê KC_AUTOMATION_CLIENT_SECRET do .env (sem ele o teste "Atualizar senha" é ignorado)
 ./scripts/sonar-analysis.sh        # build + testes + análise no SonarQube local (falha se o Quality Gate reprovar)
 ```
 
@@ -61,7 +64,7 @@ pelo `generate-env.sh` e aplicado pelo provisioner; o mesmo valor vai para o `.e
 **Investigação em logs** ([spec 001 do graylog](../graylog/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
 `log-investigator` libera, no Cadastro (policy `logs:investigate`), a geração de consultas por token no Graylog. Ela
 nunca é padrão: atribua só a pessoas nomeadas (Admin Console → realm `workspace` → Users → Role mapping). O login
-(fluxo `workspace-browser`) e o reset de senha (fluxo `workspace-reset-credentials`) exigem OTP de quem tem a role;
+(fluxo `workspace-browser`) e o reset de senha (fluxo `workspace-reset-credentials`) exigem OTP de quem tem a role (`admin` também exige OTP, RN-12);
 quem ainda não tem OTP configura o aplicativo autenticador antes de concluir. Quem não tem a role continua como nos
 fluxos padrão (OTP só se já configurou). O client `cadastro` tem a role no escopo, então ela chega no token em
 `realm_access.roles`, sem nenhum claim novo.
@@ -98,6 +101,67 @@ existente. Para reaplicar: `docker compose run --rm --no-deps provisioner` (o `-
 O `bootstrap-admin` é **temporário** e só entra pelo Admin Console. Na primeira subida: Admin Console → realm `master` →
 crie um administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o
 `bootstrap-admin`.
+
+## Migração dos usuários do Legado
+
+O Keycloak migra os usuários do [`legado`](../legado) **sob demanda** ([ADR-0006](doc/adr/0006-migracao-sob-demanda-do-legado.md),
+[ADR-0007](doc/adr/0007-identificador-mascarado-nos-eventos-de-migracao.md)): no login, se o usuário não existe (ou é
+uma conta "casca" sem senha), o Legado decide se a senha confere e só então o usuário é criado no Keycloak, com os dados
+e a senha. O Keycloak chama o Legado só por `https://legado-api:8443/api/v1/internal/...`, confiando **somente na CA do
+Legado** (TLS 1.3), com requisição assinada por HMAC-SHA256, timeout de 2 s e sem retry. O Legado não depende do Keycloak.
+
+Fluxos do realm `workspace`: `workspace-browser` (login) e `workspace-reset-credentials` (reset), ambos com OTP obrigatório
+para `admin` e `log-investigator`. No reset, quem só existe no Legado é criado sem senha e recebe o link por e-mail
+(Mailpit em http://127.0.0.1:8025); a resposta ao usuário é a mesma para qualquer entrada.
+
+### Ordem para subir tudo (rede `workspace-identity`)
+
+```bash
+# 1) Rede compartilhada (o mesmo script existe nos 3 projetos; idempotente)
+./scripts/identity-network.sh
+
+# 2) Graylog (opcional, mas se estiver no ar use sempre o override nos demais projetos)
+( cd ../graylog && ./scripts/generate-env.sh && docker compose up -d --build )
+
+# 3) Legado com a API interna: gera CA, certificado e chaves HMAC (idempotente) e sobe com o override de identidade
+cd ../legado && cp -n .env.example .env   # preencha o .env uma vez (README do legado)
+./scripts/identity-network.sh && ./scripts/internal-credentials.sh
+docker compose -f docker-compose.yml -f docker-compose.identity.yml [-f docker-compose.graylog.yml] up -d --build
+
+# 4) Keycloak: segredos próprios e a chave do Legado (copiada sem exibir o valor)
+cd ../keycloak && ./scripts/generate-env.sh
+grep -q '^KC_LEGADO_SIGNING_KEY=.' .env || echo "KC_LEGADO_SIGNING_KEY=$(grep -m1 '^LEGADO_INTERNAL_KEYCLOAK_KEY=' ../legado/.env | cut -d= -f2- | tr -d '\r')" >> .env
+docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # sem o Graylog: só docker-compose.yml
+
+# 5) Cadastro (README do cadastro): ./scripts/generate-env.sh e docker compose up -d --build  ->  http://localhost:4300
+```
+
+- `KC_LEGADO_SIGNING_KEY` é a chave HMAC que o **Legado emitiu** (`LEGADO_INTERNAL_KEYCLOAK_KEY` do `.env` dele): o
+  `generate-env.sh` não a gera. O `docker-compose.yml` a repassa às três configurações de provider
+  (`KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__*`, `KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__*` e
+  `KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__*`, cada uma com `BASE_URL`, `TIMEOUT_MS`, `KEY_ID`,
+  `SIGNING_KEY` e `CA_FILE`). Sem a chave, o formulário de login age como o padrão e ninguém é migrado.
+- A CA pública do Legado (`../legado/secrets/internal/ca.crt`) é montada em `/opt/keycloak/conf/legado-ca.pem`: rode o
+  `internal-credentials.sh` do Legado **antes** de subir o Keycloak (sem o arquivo, o Docker cria um diretório no lugar).
+- Troque o `.env` ou a CA? Recrie o container (`up -d`), pois as variáveis só são lidas na subida.
+- **Nunca rode dois provisioners ou smokes ao mesmo tempo** (nem `docker compose run provisioner` durante o `up`):
+  com execuções concorrentes houve falha intermitente (`Parent flow doesn't exist` ou JSON inválido) ao reconstruir
+  os fluxos. A causa não foi comprovada; espere o `provisioner` do `up` terminar.
+
+### Eventos de migração (auditoria)
+
+Tipos: `LEGACY_USER_MIGRATED`, `LEGACY_USER_PREPARED_FOR_RESET`, `LEGACY_MIGRATION_MARKED`, `LEGACY_MIGRATION_MARK_FAILED`
+e, com o campo `masked_login` (única exceção ao "sem dado pessoal", ADR-0007), só `LEGACY_USER_NOT_FOUND`,
+`LEGACY_PASSWORD_MISMATCH`, `LEGACY_ACCOUNT_LOCKED`, `LEGACY_ALREADY_MIGRATED`, `RESET_UNKNOWN_USER` e
+`LEGACY_UNAVAILABLE`. O `masked_login` (ex.: `ana***@gmail`) vai como campo GELF próprio, sem `_token`, e leva também
+`client_id`; o stream do Graylog é `Identidade - Migração`. Riscos aceitos (enumeração por tempo e ausência de rate
+limit no Keycloak para contas só do Legado): ADR-0006.
+
+### Testes de ponta a ponta da migração
+
+Ficam no [`cadastro`](../cadastro) (`./scripts/e2e.sh`, com a stack acima de pé; veja o `e2e/README.md` dele). No Keycloak,
+os cenários da migração são cobertos por `LegacyLoginIT`, `LegacyResetIT`, `LegacyMigrationCompletionIT` e
+`LegacyMigrationEdgeCasesIT` (Legado simulado) dentro do `./scripts/build.sh`.
 
 ## Graylog
 
@@ -158,6 +222,9 @@ versão no `pom.xml` e no `Dockerfile`, e backup do volume `keycloak-db-data` an
 
 ## Pendências
 
-- Migração dos usuários do `legado`.
 - Rever a exceção do Guava (CVE-2026-102554) até 2026-12-12 ou no próximo upgrade do Keycloak (ADR-0005).
 - Produção: input GELF com mTLS e rede dedicada (ADR-0004), tracing com backend de traces (R6).
+- Enumeração por tempo e ausência de rate limit do Keycloak para contas só do Legado: riscos aceitos (ADR-0006); mitigação
+  futura com rate limit/atraso uniforme.
+- E2E da migração não cobre o Legado fora do ar nem o admin migrado configurando OTP no navegador (cobertos por
+  `LegacyLoginIT`); E2E no CI depende de um Keycloak compartilhado (hoje roda local).

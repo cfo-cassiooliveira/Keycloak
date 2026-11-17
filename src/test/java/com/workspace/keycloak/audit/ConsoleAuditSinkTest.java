@@ -36,6 +36,24 @@ class ConsoleAuditSinkTest {
     }
 
     @Test
+    void write_WhenLevelIsError_LogsJsonAtError() {
+        sink.write(new AuditRecord(AuditLevel.ERROR, fields("LEGACY_UNAVAILABLE")));
+
+        verify(logger).error("{\"audit_schema\":1,\"type\":\"LEGACY_UNAVAILABLE\"}");
+        verify(logger, never()).warn(any());
+    }
+
+    @Test
+    void write_WhenMigrationEventHasMaskedLogin_KeepsItAsItsOwnJsonField() {
+        Map<String, Object> fields = fields("LEGACY_USER_NOT_FOUND");
+        fields.put("masked_login", "ana***@gmail");
+
+        sink.write(new AuditRecord(AuditLevel.WARN, fields));
+
+        verify(logger).warn("{\"audit_schema\":1,\"type\":\"LEGACY_USER_NOT_FOUND\",\"masked_login\":\"ana***@gmail\"}");
+    }
+
+    @Test
     void write_WhenValueCannotBeSerialized_ThrowsUncheckedAndLogsNothing() {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("invalid", new UnserializableValue());

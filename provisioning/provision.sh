@@ -6,7 +6,7 @@
 #   - client de serviço "workspace-automation" (client credentials) para scripts e testes;
 #   - admin-cli do master sem password grant (fluxo proibido pelo security.md); admins usam o Admin Console;
 #   - reconcilia no realm workspace as configurações de auditoria/LGPD, reset de senha, SMTP, roles, fluxo de login
-#     "workspace-browser" (OTP da role log-investigator), User Profile, textos traduzidos e o client "cadastro"
+#     "workspace-browser" (OTP das roles log-investigator e admin), User Profile, textos traduzidos e o client "cadastro"
 #     (o --import-realm não altera realm existente).
 # Roda a cada "docker compose up" (serviço provisioner). Segredos chegam por variáveis de ambiente, nunca por argumento.
 set -euo pipefail
@@ -90,7 +90,7 @@ reconcile_workspace_realm() {
     return 0
   fi
   kc update realms/workspace \
-    -s 'eventsListeners=["workspace-audit"]' \
+    -s 'eventsListeners=["workspace-audit","legacy-migration-completion"]' \
     -s eventsEnabled=false \
     -s adminEventsEnabled=false \
     -s adminEventsDetailsEnabled=false \
@@ -234,49 +234,59 @@ ensure_flow() {
 # pede o OTP duas vezes na mesma autenticação.
 build_browser_flow() {
   local top="$1" s="$2"
-  local forms="workspace-browser-v1-forms${s}"
+  local forms="workspace-browser-v2-forms${s}"
   kc create authentication/flows -r workspace -f - >/dev/null \
-    <<<"{\"alias\":\"${top}\",\"description\":\"Login do navegador: step-up por LoA (senha, OTP) e OTP obrigatório para log-investigator.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
+    <<<"{\"alias\":\"${top}\",\"description\":\"Login do navegador: usuário e senha com migração do Legado, step-up por LoA e OTP obrigatório para log-investigator e admin.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
   add_flow_execution "$top" auth-cookie ALTERNATIVE 10
   add_subflow "$top" "$forms" "Formulários de login por nível de autenticação." ALTERNATIVE 20
-  add_subflow "$forms" workspace-browser-v1-password${s} "LoA 1: usuário e senha." CONDITIONAL 10
-  add_flow_execution workspace-browser-v1-password${s} conditional-level-of-authentication REQUIRED 10 \
-    workspace-browser-v1-loa-password${s} '{"loa-condition-level":"1","loa-max-age":"36000"}'
-  add_flow_execution workspace-browser-v1-password${s} auth-username-password-form REQUIRED 20
-  add_subflow "$forms" workspace-browser-v1-step-up-otp${s} "LoA 2 (acr otp): OTP nesta autenticação." CONDITIONAL 20
-  add_flow_execution workspace-browser-v1-step-up-otp${s} conditional-level-of-authentication REQUIRED 10 \
-    workspace-browser-v1-loa-otp${s} '{"loa-condition-level":"2","loa-max-age":"0"}'
-  add_flow_execution workspace-browser-v1-step-up-otp${s} auth-otp-form REQUIRED 20
-  add_subflow "$forms" workspace-browser-v1-otp-by-role${s} "OTP obrigatório para log-investigator." CONDITIONAL 30
-  add_flow_execution workspace-browser-v1-otp-by-role${s} conditional-user-role REQUIRED 10 \
-    workspace-browser-v1-role-log-investigator${s} '{"condUserRole":"log-investigator","negate":"false"}'
-  add_flow_execution workspace-browser-v1-otp-by-role${s} conditional-credential REQUIRED 20 \
-    workspace-browser-v1-otp-not-used-by-role${s} '{"credentials":"otp","included":"false"}'
-  add_flow_execution workspace-browser-v1-otp-by-role${s} auth-otp-form REQUIRED 30
-  add_subflow "$forms" workspace-browser-v1-otp-configured${s} "OTP para quem já o configurou (como no browser padrão)." CONDITIONAL 40
-  add_flow_execution workspace-browser-v1-otp-configured${s} conditional-user-configured REQUIRED 10
-  add_flow_execution workspace-browser-v1-otp-configured${s} conditional-credential REQUIRED 20 \
-    workspace-browser-v1-otp-not-used-configured${s} '{"credentials":"otp","included":"false"}'
-  add_flow_execution workspace-browser-v1-otp-configured${s} auth-otp-form REQUIRED 30
+  add_subflow "$forms" workspace-browser-v2-password${s} "LoA 1: usuário e senha." CONDITIONAL 10
+  add_flow_execution workspace-browser-v2-password${s} conditional-level-of-authentication REQUIRED 10 \
+    workspace-browser-v2-loa-password${s} '{"loa-condition-level":"1","loa-max-age":"36000"}'
+  add_flow_execution workspace-browser-v2-password${s} legacy-username-password-form REQUIRED 20
+  add_subflow "$forms" workspace-browser-v2-step-up-otp${s} "LoA 2 (acr otp): OTP nesta autenticação." CONDITIONAL 20
+  add_flow_execution workspace-browser-v2-step-up-otp${s} conditional-level-of-authentication REQUIRED 10 \
+    workspace-browser-v2-loa-otp${s} '{"loa-condition-level":"2","loa-max-age":"0"}'
+  add_flow_execution workspace-browser-v2-step-up-otp${s} auth-otp-form REQUIRED 20
+  add_subflow "$forms" workspace-browser-v2-otp-by-role${s} "OTP obrigatório para log-investigator." CONDITIONAL 30
+  add_flow_execution workspace-browser-v2-otp-by-role${s} conditional-user-role REQUIRED 10 \
+    workspace-browser-v2-role-log-investigator${s} '{"condUserRole":"log-investigator","negate":"false"}'
+  add_flow_execution workspace-browser-v2-otp-by-role${s} conditional-credential REQUIRED 20 \
+    workspace-browser-v2-otp-not-used-by-role${s} '{"credentials":"otp","included":"false"}'
+  add_flow_execution workspace-browser-v2-otp-by-role${s} auth-otp-form REQUIRED 30
+  add_subflow "$forms" workspace-browser-v2-otp-by-admin${s} "OTP obrigatório para admin (RN-12)." CONDITIONAL 40
+  add_flow_execution workspace-browser-v2-otp-by-admin${s} conditional-user-role REQUIRED 10 \
+    workspace-browser-v2-role-admin${s} '{"condUserRole":"admin","negate":"false"}'
+  add_flow_execution workspace-browser-v2-otp-by-admin${s} conditional-credential REQUIRED 20 \
+    workspace-browser-v2-otp-not-used-by-admin${s} '{"credentials":"otp","included":"false"}'
+  add_flow_execution workspace-browser-v2-otp-by-admin${s} auth-otp-form REQUIRED 30
+  add_subflow "$forms" workspace-browser-v2-otp-configured${s} "OTP para quem já o configurou (como no browser padrão)." CONDITIONAL 50
+  add_flow_execution workspace-browser-v2-otp-configured${s} conditional-user-configured REQUIRED 10
+  add_flow_execution workspace-browser-v2-otp-configured${s} conditional-credential REQUIRED 20 \
+    workspace-browser-v2-otp-not-used-configured${s} '{"credentials":"otp","included":"false"}'
+  add_flow_execution workspace-browser-v2-otp-configured${s} auth-otp-form REQUIRED 30
 }
 
 expected_browser_flow() {
   cat <<'SIGNATURE'
 0,0,10,Cookie,auth-cookie,ALTERNATIVE,
-0,1,20,workspace-browser-v1-forms,,ALTERNATIVE,
-1,0,10,workspace-browser-v1-password,,CONDITIONAL,
-2,0,10,Condition - Level of Authentication,conditional-level-of-authentication,REQUIRED,{"alias":"workspace-browser-v1-loa-password","config":{"loa-condition-level":"1","loa-max-age":"36000"}}
-2,1,20,Username Password Form,auth-username-password-form,REQUIRED,
-1,1,20,workspace-browser-v1-step-up-otp,,CONDITIONAL,
-2,0,10,Condition - Level of Authentication,conditional-level-of-authentication,REQUIRED,{"alias":"workspace-browser-v1-loa-otp","config":{"loa-condition-level":"2","loa-max-age":"0"}}
+0,1,20,workspace-browser-v2-forms,,ALTERNATIVE,
+1,0,10,workspace-browser-v2-password,,CONDITIONAL,
+2,0,10,Condition - Level of Authentication,conditional-level-of-authentication,REQUIRED,{"alias":"workspace-browser-v2-loa-password","config":{"loa-condition-level":"1","loa-max-age":"36000"}}
+2,1,20,Legacy Username Password Form,legacy-username-password-form,REQUIRED,
+1,1,20,workspace-browser-v2-step-up-otp,,CONDITIONAL,
+2,0,10,Condition - Level of Authentication,conditional-level-of-authentication,REQUIRED,{"alias":"workspace-browser-v2-loa-otp","config":{"loa-condition-level":"2","loa-max-age":"0"}}
 2,1,20,OTP Form,auth-otp-form,REQUIRED,
-1,2,30,workspace-browser-v1-otp-by-role,,CONDITIONAL,
-2,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-browser-v1-role-log-investigator","config":{"condUserRole":"log-investigator","negate":"false"}}
-2,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-browser-v1-otp-not-used-by-role","config":{"credentials":"otp","included":"false"}}
+1,2,30,workspace-browser-v2-otp-by-role,,CONDITIONAL,
+2,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-browser-v2-role-log-investigator","config":{"condUserRole":"log-investigator","negate":"false"}}
+2,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-browser-v2-otp-not-used-by-role","config":{"credentials":"otp","included":"false"}}
 2,2,30,OTP Form,auth-otp-form,REQUIRED,
-1,3,40,workspace-browser-v1-otp-configured,,CONDITIONAL,
+1,3,40,workspace-browser-v2-otp-by-admin,,CONDITIONAL,
+2,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-browser-v2-role-admin","config":{"condUserRole":"admin","negate":"false"}}
+2,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-browser-v2-otp-not-used-by-admin","config":{"credentials":"otp","included":"false"}}
+2,2,30,OTP Form,auth-otp-form,REQUIRED,
+1,4,50,workspace-browser-v2-otp-configured,,CONDITIONAL,
 2,0,10,Condition - user configured,conditional-user-configured,REQUIRED,
-2,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-browser-v1-otp-not-used-configured","config":{"credentials":"otp","included":"false"}}
+2,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-browser-v2-otp-not-used-configured","config":{"credentials":"otp","included":"false"}}
 2,2,30,OTP Form,auth-otp-form,REQUIRED,
 SIGNATURE
 }
@@ -286,33 +296,46 @@ SIGNATURE
 build_reset_credentials_flow() {
   local top="$1" s="$2"
   kc create authentication/flows -r workspace -f - >/dev/null \
-    <<<"{\"alias\":\"${top}\",\"description\":\"Reset de senha por e-mail; OTP obrigatório para log-investigator.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
-  add_flow_execution "$top" reset-credentials-choose-user REQUIRED 10
+    <<<"{\"alias\":\"${top}\",\"description\":\"Reset de senha por e-mail; OTP obrigatório para log-investigator e admin.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
+  add_flow_execution "$top" legacy-reset-choose-user REQUIRED 10
   add_flow_execution "$top" reset-credential-email REQUIRED 20
   add_flow_execution "$top" reset-password REQUIRED 30
-  add_subflow "$top" workspace-reset-v1-otp-by-role${s} "OTP obrigatório para log-investigator." CONDITIONAL 40
-  add_flow_execution workspace-reset-v1-otp-by-role${s} conditional-user-role REQUIRED 10 \
-    workspace-reset-v1-role-log-investigator${s} '{"condUserRole":"log-investigator","negate":"false"}'
-  add_flow_execution workspace-reset-v1-otp-by-role${s} auth-otp-form REQUIRED 20
-  add_subflow "$top" workspace-reset-v1-otp-configured${s} "Reset padrão do OTP configurado, exceto log-investigator." CONDITIONAL 50
-  add_flow_execution workspace-reset-v1-otp-configured${s} conditional-user-configured REQUIRED 10
-  add_flow_execution workspace-reset-v1-otp-configured${s} conditional-user-role REQUIRED 20 \
-    workspace-reset-v1-not-log-investigator${s} '{"condUserRole":"log-investigator","negate":"true"}'
-  add_flow_execution workspace-reset-v1-otp-configured${s} reset-otp REQUIRED 30
+  add_subflow "$top" workspace-reset-v3-otp-by-role${s} "OTP obrigatório para log-investigator." CONDITIONAL 40
+  add_flow_execution workspace-reset-v3-otp-by-role${s} conditional-user-role REQUIRED 10 \
+    workspace-reset-v3-role-log-investigator${s} '{"condUserRole":"log-investigator","negate":"false"}'
+  add_flow_execution workspace-reset-v3-otp-by-role${s} auth-otp-form REQUIRED 20
+  add_subflow "$top" workspace-reset-v3-otp-by-admin${s} "OTP obrigatório para admin que não é log-investigator (este já confirma o OTP acima)." CONDITIONAL 50
+  add_flow_execution workspace-reset-v3-otp-by-admin${s} conditional-user-role REQUIRED 10 \
+    workspace-reset-v3-role-admin${s} '{"condUserRole":"admin","negate":"false"}'
+  add_flow_execution workspace-reset-v3-otp-by-admin${s} conditional-user-role REQUIRED 20 \
+    workspace-reset-v3-admin-not-log-investigator${s} '{"condUserRole":"log-investigator","negate":"true"}'
+  add_flow_execution workspace-reset-v3-otp-by-admin${s} auth-otp-form REQUIRED 30
+  add_subflow "$top" workspace-reset-v3-otp-configured${s} "Reset padrão do OTP configurado, exceto log-investigator e admin." CONDITIONAL 60
+  add_flow_execution workspace-reset-v3-otp-configured${s} conditional-user-configured REQUIRED 10
+  add_flow_execution workspace-reset-v3-otp-configured${s} conditional-user-role REQUIRED 20 \
+    workspace-reset-v3-not-log-investigator${s} '{"condUserRole":"log-investigator","negate":"true"}'
+  add_flow_execution workspace-reset-v3-otp-configured${s} conditional-user-role REQUIRED 30 \
+    workspace-reset-v3-not-admin${s} '{"condUserRole":"admin","negate":"true"}'
+  add_flow_execution workspace-reset-v3-otp-configured${s} reset-otp REQUIRED 40
 }
 
 expected_reset_credentials_flow() {
   cat <<'SIGNATURE'
-0,0,10,Choose User,reset-credentials-choose-user,REQUIRED,
+0,0,10,Legacy Choose User,legacy-reset-choose-user,REQUIRED,
 0,1,20,Send Reset Email,reset-credential-email,REQUIRED,
 0,2,30,Reset Password,reset-password,REQUIRED,
-0,3,40,workspace-reset-v1-otp-by-role,,CONDITIONAL,
-1,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v1-role-log-investigator","config":{"condUserRole":"log-investigator","negate":"false"}}
+0,3,40,workspace-reset-v3-otp-by-role,,CONDITIONAL,
+1,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v3-role-log-investigator","config":{"condUserRole":"log-investigator","negate":"false"}}
 1,1,20,OTP Form,auth-otp-form,REQUIRED,
-0,4,50,workspace-reset-v1-otp-configured,,CONDITIONAL,
+0,4,50,workspace-reset-v3-otp-by-admin,,CONDITIONAL,
+1,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v3-role-admin","config":{"condUserRole":"admin","negate":"false"}}
+1,1,20,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v3-admin-not-log-investigator","config":{"condUserRole":"log-investigator","negate":"true"}}
+1,2,30,OTP Form,auth-otp-form,REQUIRED,
+0,5,60,workspace-reset-v3-otp-configured,,CONDITIONAL,
 1,0,10,Condition - user configured,conditional-user-configured,REQUIRED,
-1,1,20,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v1-not-log-investigator","config":{"condUserRole":"log-investigator","negate":"true"}}
-1,2,30,Reset OTP,reset-otp,REQUIRED,
+1,1,20,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v3-not-log-investigator","config":{"condUserRole":"log-investigator","negate":"true"}}
+1,2,30,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-reset-v3-not-admin","config":{"condUserRole":"admin","negate":"true"}}
+1,3,40,Reset OTP,reset-otp,REQUIRED,
 SIGNATURE
 }
 

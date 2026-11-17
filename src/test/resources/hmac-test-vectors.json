@@ -1,0 +1,33 @@
+{
+  "description": "Vetores da assinatura HMAC da API interna do Legado (ADR-0005). Chave fictícia, só de teste. Calculados com openssl (oráculo independente): canônico = t \\n nonce \\n MÉTODO \\n rota+query \\n hex(SHA-256(corpo)); assinatura = base64(HMAC-SHA256(chave, canônico)). Usados pelos testes do Legado, do Keycloak (Java) e do Cadastro (.NET).",
+  "secret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  "vectors": [
+    {
+      "timestamp": 1763035200,
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "method": "POST",
+      "pathAndQuery": "/api/v1/internal/credential-verifications",
+      "body": "{\"login\":\"ana.souza\",\"password\":\"Senha@123\"}",
+      "bodySha256": "c834acc676f9000890fada1bf29f8af6f2d7d6fe2807a0fde1d7818a5962932f",
+      "signature": "WKg1BEo1aG4nOL86xzCTZwhl1g0TS2EcD6+SfaKydGU="
+    },
+    {
+      "timestamp": 1763035200,
+      "nonce": "EBESExQVFhcYGRobHB0eHw",
+      "method": "PUT",
+      "pathAndQuery": "/api/v1/internal/users/0195f1d2-7c3a-7b11-9a00-000000000001/migration",
+      "body": "{\"keycloakUserId\":\"7d3b5f0e-1a2b-4c3d-8e9f-000000000002\"}",
+      "bodySha256": "8ca8699fca63a14b790e25e7d101909b4ecfb728326797759f91b11c30e0b28d",
+      "signature": "9MljcDCTair8GUaxERbDN8vP5XtKqexQCmo5gQY9n6Y="
+    },
+    {
+      "timestamp": 1763035200,
+      "nonce": "ICEiIyQlJicoKSorLC0uLw",
+      "method": "GET",
+      "pathAndQuery": "/api/v1/internal/ping?x=1",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "Iao9mDTHqgUsq1RhM325GvKZoEGjjYwJxmHixge8thM="
+    }
+  ]
+}

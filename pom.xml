@@ -74,6 +74,12 @@
             <artifactId>keycloak-server-spi-private</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- UsernamePasswordForm e AuthenticationManager (authenticator de login); classes internas do servidor, ADR-0006. -->
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-services</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging</artifactId>

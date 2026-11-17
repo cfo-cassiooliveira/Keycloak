@@ -43,12 +43,33 @@ services:
       # realms criados no futuro. A auditoria fica com o workspace-audit (provisioner configura o master).
       KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__SUCCESS_LEVEL: trace
       KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__ERROR_LEVEL: trace
+      # Cliente da API interna do Legado (ADR-0006): HTTPS confiando só na CA do Legado, requisição assinada por
+      # HMAC e timeout de 2 s sem retry. A chave vem do Legado (KC_LEGADO_SIGNING_KEY, README); nunca versionada.
+      KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__BASE_URL: https://legado-api:8443
+      KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__TIMEOUT_MS: "2000"
+      KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__KEY_ID: keycloak-1
+      KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__SIGNING_KEY: ${KC_LEGADO_SIGNING_KEY:-}
+      KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__CA_FILE: /opt/keycloak/conf/legado-ca.pem
+      # Reset de senha (legacy-reset-choose-user) e marcação após o commit (legacy-migration-completion) usam o
+      # mesmo cliente do Legado: mesma URL, chave e CA, uma configuração por provider (o Keycloak não as compartilha).
+      KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__BASE_URL: https://legado-api:8443
+      KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__TIMEOUT_MS: "2000"
+      KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__KEY_ID: keycloak-1
+      KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__SIGNING_KEY: ${KC_LEGADO_SIGNING_KEY:-}
+      KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__CA_FILE: /opt/keycloak/conf/legado-ca.pem
+      KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__BASE_URL: https://legado-api:8443
+      KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__TIMEOUT_MS: "2000"
+      KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__KEY_ID: keycloak-1
+      KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__SIGNING_KEY: ${KC_LEGADO_SIGNING_KEY:-}
+      KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__CA_FILE: /opt/keycloak/conf/legado-ca.pem
     # Tempo para a fila de auditoria ser entregue (ou ir para o fallback) no desligamento (ADR-0004).
     stop_grace_period: 30s
     volumes:
       - ./realm:/opt/keycloak/data/import:ro
       # Fallback da auditoria (registros que o Graylog não aceitou), persistente entre reinícios (ADR-0004).
       - keycloak-audit-fallback:/opt/keycloak/data/log
+      # CA pública do Legado (scripts/internal-credentials.sh do legado): a única que o Keycloak aceita ao chamá-lo.
+      - ../legado/secrets/internal/ca.crt:/opt/keycloak/conf/legado-ca.pem:ro
     ports:
       - "127.0.0.1:8180:8080"
       - "127.0.0.1:9100:9000"

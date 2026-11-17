@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,18 @@ public final class AuditEventMapper {
     // Só o UUID do usuário afetado sai do caminho do recurso; o restante do caminho pode conter nomes.
     private static final Pattern USER_RESOURCE_PATH = Pattern.compile(
             "^users/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:/.*)?$");
+
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+
+    // Formato de MaskedIdentifier: até 3 caracteres + *** (e @ + primeiro rótulo do domínio), ou só ***.
+    private static final Pattern MASKED_LOGIN_PATTERN = Pattern.compile("^(?:[^\\s@*]{1,3}\\*{3}(?:@[^\\s@.*]+)?|\\*{3})$");
+
+    private static final Pattern ERROR_CODE_PATTERN = Pattern.compile("^[a-z0-9_]{1,40}$");
+
+    private static final Pattern CLIENT_ID_PATTERN = Pattern.compile("^[A-Za-z0-9._:/@-]{1,255}$");
+
+    private static final Set<String> ALLOWED_FLOWS = Set.of("login", "reset");
 
     public AuditRecord map(Event event) {
         Map<String, Object> fields = newFields("user");
@@ -71,6 +84,36 @@ public final class AuditEventMapper {
 
         AuditLevel level = event.getError() == null ? AuditLevel.INFO : AuditLevel.WARN;
         return new AuditRecord(level, fields);
+    }
+
+    /**
+     * Converte um evento de migração. Só entram campos conhecidos e válidos: {@code masked_login} apenas nos tipos
+     * do ADR-0007 e apenas no formato de máscara; ids só como UUID; {@code flow} e {@code error} só como códigos
+     * curtos. Qualquer outro valor é descartado, para um login ou e-mail completo nunca sair por engano.
+     */
+    public AuditRecord map(MigrationAuditEntry entry) {
+        return map(entry, Instant.now());
+    }
+
+    AuditRecord map(MigrationAuditEntry entry, Instant occurredAt) {
+        Map<String, Object> fields = newFields("migration");
+        put(fields, "event_id", UUID.randomUUID().toString());
+        put(fields, "type", entry.type().name());
+        put(fields, "client_id", matchingOrNull(CLIENT_ID_PATTERN, entry.clientId()));
+        put(fields, "user_id", matchingOrNull(UUID_PATTERN, entry.userId()));
+        put(fields, "legacy_user_id", matchingOrNull(UUID_PATTERN, entry.legacyUserId()));
+        put(fields, "password_update_required", entry.passwordUpdateRequired());
+        if (entry.type().allowsMaskedLogin()) {
+            put(fields, "masked_login", matchingOrNull(MASKED_LOGIN_PATTERN, entry.maskedLogin()));
+        }
+        put(fields, "flow", entry.flow() != null && ALLOWED_FLOWS.contains(entry.flow()) ? entry.flow() : null);
+        put(fields, "error", matchingOrNull(ERROR_CODE_PATTERN, entry.error()));
+        put(fields, "occurred_at", occurredAt.toString());
+        return new AuditRecord(entry.type().level(), fields);
+    }
+
+    private static String matchingOrNull(Pattern pattern, String value) {
+        return value != null && pattern.matcher(value).matches() ? value : null;
     }
 
     private static Map<String, Object> newFields(String kind) {

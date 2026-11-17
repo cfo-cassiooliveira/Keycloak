@@ -26,6 +26,7 @@ public final class ConsoleAuditSink implements AuditSink {
         switch (auditRecord.level()) {
             case INFO -> logger.info(json);
             case WARN -> logger.warn(json);
+            case ERROR -> logger.error(json);
         }
     }
 
