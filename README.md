@@ -58,6 +58,27 @@ exato `http://localhost:4300/bff/signin-oidc`, sem password grant). A conta de s
 (`provisioning/workspace-user-profile.json`, editáveis só por admin). O segredo `KC_CADASTRO_CLIENT_SECRET` é gerado
 pelo `generate-env.sh` e aplicado pelo provisioner; o mesmo valor vai para o `.env` do cadastro.
 
+**Investigação em logs** ([spec 001 do graylog](../graylog/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
+`log-investigator` libera, no Cadastro (policy `logs:investigate`), a geração de consultas por token no Graylog. Ela
+nunca é padrão: atribua só a pessoas nomeadas (Admin Console → realm `workspace` → Users → Role mapping). O login
+(fluxo `workspace-browser`) e o reset de senha (fluxo `workspace-reset-credentials`) exigem OTP de quem tem a role;
+quem ainda não tem OTP configura o aplicativo autenticador antes de concluir. Quem não tem a role continua como nos
+fluxos padrão (OTP só se já configurou). O client `cadastro` tem a role no escopo, então ela chega no token em
+`realm_access.roles`, sem nenhum claim novo.
+
+Contrato com o Cadastro: a pesquisa em logs exige a role, `acr=otp` e `auth_time` de no máximo 5 minutos atrás. A tela
+de pesquisa (C04) abre `/bff/login?acr_values=otp&returnUrl=/log-search` e repete o pedido quando o `auth_time` passar
+de 5 minutos; o BFF valida `acr` e `auth_time` no callback e a policy `logs:investigate` os confere a cada chamada. O Keycloak só emite `acr=otp` quando o OTP foi digitado nessa autenticação (step-up por
+nível de autenticação: `acr.loa.map` do realm = `{"password":1,"otp":2}`), e o `auth_time` passa a ser a hora do
+step-up. Login comum, SSO por cookie e refresh de token obtido sem OTP emitem `acr=password` ou `0`. Já o refresh de um
+token do step-up **mantém** `acr=otp` (e o `auth_time` do step-up) enquanto durar a sessão do client, até 10 h: por
+isso o limite de `auth_time`. O reset de senha também conclui o login com `acr=password`, mesmo pedido com
+`acr_values=otp` e com o OTP digitado; a pesquisa nega e o investigador repete o step-up.
+
+**Configure o OTP antes de atribuir a role.** Quem recebe `log-investigator` sem OTP cadastrado configura o próprio
+autenticador no primeiro login, só com a senha: quem tiver a senha nesse momento fica com o segundo fator. Peça ao
+usuário para configurar o OTP (Conta → Segurança → Autenticador) e só então atribua a role.
+
 Containers da rede `workspace-identity` (ex.: BFF do cadastro) acessam o Keycloak em `http://keycloak:8080`. Com
 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, token e JWKS respondem nesse endereço e o `issuer` continua
 `http://localhost:8180/realms/...`, o mesmo que o navegador vê.
@@ -70,7 +91,9 @@ O serviço `provisioner` (`provisioning/provision.sh`, idempotente, roda a cada 
 auditoria pelo `workspace-audit` (o listener padrão grava username e IP), sem eventos gravados no banco, proteção contra
 força bruta, `admin-cli` **sem password grant** e o client de serviço `workspace-automation` (client credentials,
 segredo `KC_AUTOMATION_CLIENT_SECRET` do `.env`) para scripts e CI. Ele também reconcilia as configurações de auditoria
-do realm `workspace` (o `--import-realm` não altera realm já existente). Para reaplicar: `docker compose run --rm --no-deps provisioner` (o `--no-deps` evita recriar a stack sem o override do Graylog).
+do realm `workspace` e a política de username (`registrationEmailAsUsername=false`, padrão do Keycloak e coerente com o
+padrão `^[a-z0-9._-]+$`; uma mudança manual é desfeita na próxima execução). O `--import-realm` não altera realm já
+existente. Para reaplicar: `docker compose run --rm --no-deps provisioner` (o `--no-deps` evita recriar a stack sem o override do Graylog).
 
 O `bootstrap-admin` é **temporário** e só entra pelo Admin Console. Na primeira subida: Admin Console → realm `master` →
 crie um administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o
@@ -84,6 +107,10 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 ./scripts/smoke-graylog.sh         # Graylog ok, master sem dado pessoal, Graylog fora (fallback), volta (alerta), reenvio
 ./scripts/replay-fallback.sh       # reenvia ao Graylog o que ficou no fallback
 ```
+
+Com o Graylog no ar, suba (ou recrie) o Keycloak **sempre** com o override. Um `docker compose up` só com o
+`docker-compose.yml` recria o container sem o destino GELF: a auditoria (inclusive as ações administrativas) passa a ir
+só para o console e não entra no fallback, então não há como reenviá-la depois.
 
 - **Auditoria**: GELF HTTP para `graylog:12202/gelf` com confirmação (202), stream `Keycloak - Auditoria`. Campos:
   tipo/operação, erro, `user_id` / `target_user_id` / `actor_user_id` (ids técnicos), client, realm, `event_id`,

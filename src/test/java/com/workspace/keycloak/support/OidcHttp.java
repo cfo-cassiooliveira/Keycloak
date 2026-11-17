@@ -32,6 +32,8 @@ public final class OidcHttp {
 
     private static final Pattern LOGIN_FORM_ACTION = Pattern.compile("<form id=\"kc-form-login\" action=\"([^\"]+)\"");
 
+    private static final Pattern OTP_FORM_ACTION = Pattern.compile("<form id=\"kc-otp-login-form\"[^>]*action=\"([^\"]+)\"");
+
     private OidcHttp() {
     }
 
@@ -65,6 +67,33 @@ public final class OidcHttp {
      */
     public static Response submitLoginForm(HttpClient httpClient, String realmBaseUrl, String clientId,
             String redirectUri, String username, String password) throws IOException {
+        return login(httpClient, realmBaseUrl, clientId, redirectUri, username, password).response();
+    }
+
+    /**
+     * Faz o login pelo formulário e, na tela seguinte, envia o código OTP na mesma sessão de login.
+     * Falha se a tela depois da senha não for a do OTP.
+     */
+    public static Response submitLoginFormWithOtp(HttpClient httpClient, String realmBaseUrl, String clientId,
+            String redirectUri, String username, String password, String otpCode) throws IOException {
+        LoginAttempt attempt = login(httpClient, realmBaseUrl, clientId, redirectUri, username, password);
+        Matcher action = OTP_FORM_ACTION.matcher(attempt.response().body());
+        if (!action.find()) {
+            throw new IllegalStateException("OTP form not found on page");
+        }
+        HttpPost post = new HttpPost(action.group(1).replace("&amp;", "&"));
+        post.setHeader("Cookie", attempt.cookies());
+        post.setEntity(new UrlEncodedFormEntity(
+                List.of(new BasicNameValuePair("otp", otpCode)), StandardCharsets.UTF_8));
+        return execute(httpClient, post, HttpClientContext.create());
+    }
+
+    // Resposta do envio do formulário e os cookies da sessão de login, para continuar o mesmo fluxo.
+    private record LoginAttempt(Response response, String cookies) {
+    }
+
+    private static LoginAttempt login(HttpClient httpClient, String realmBaseUrl, String clientId,
+            String redirectUri, String username, String password) throws IOException {
         HttpResponse pageResponse = httpClient.execute(
                 authorizationGet(realmBaseUrl, clientId, redirectUri, true, "pt-BR"), HttpClientContext.create());
         String page = EntityUtils.toString(pageResponse.getEntity());
@@ -88,7 +117,7 @@ public final class OidcHttp {
             follow.setConfig(RequestConfig.custom().setRedirectsEnabled(false).build());
             response = execute(httpClient, follow, HttpClientContext.create());
         }
-        return response;
+        return new LoginAttempt(response, cookies);
     }
 
     private static boolean isLoginActionRedirect(Response response, String realmBaseUrl) {
