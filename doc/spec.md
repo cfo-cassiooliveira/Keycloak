@@ -135,7 +135,7 @@ Cenário: realm master inalterado
 - Alterações em outros projetos do Workspace (`legado`, `graylog`, `sonarqube`, sites) — decisão do responsável técnico.
 - Envio dos logs ao Graylog e streams/alertas (dependem de alterar o projeto `graylog`).
 - Registro no SonarQube local (depende de alterar `sonarqube/provisioning/projects.json`).
-- Migração dos usuários do `legado` (importação de hashes `pbkdf2-sha512`, User Storage SPI de migração, BFF).
+- Migração dos usuários do `legado` (importação de hashes `pbkdf2-sha512`, User Storage SPI de migração, BFF). Tratada depois, na spec 001 do `cadastro` (migração sob demanda por Authenticator, ADR-0006 e ADR-0007 deste projeto).
 - Clients de aplicações (cada aplicação cria o seu quando for integrada).
 - Publicação de eventos no RabbitMQ, temas de e-mail/conta/admin, autenticadores e required actions customizados,
   validadores de perfil, deploy em produção/HTTPS próprio/cluster.
