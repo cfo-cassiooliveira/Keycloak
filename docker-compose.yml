@@ -122,6 +122,7 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
       KC_AUTOMATION_CLIENT_SECRET: ${KC_AUTOMATION_CLIENT_SECRET:?KC_AUTOMATION_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_CADASTRO_CLIENT_SECRET: ${KC_CADASTRO_CLIENT_SECRET:?KC_CADASTRO_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+      KC_GRAFANA_CLIENT_SECRET: ${KC_GRAFANA_CLIENT_SECRET:?KC_GRAFANA_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
     volumes:
       - ./provisioning:/provisioning:ro
     depends_on:

@@ -14,7 +14,15 @@ REALM="workspace"
 PROBE_USERNAME="smoke.probe.$(date +%s)"
 failures=0
 work_dir="$(mktemp -d)"
-trap 'rm -rf "$work_dir"' EXIT
+# Remove os usuários descartáveis do Grafana (smoke.grafana.*) mesmo que o smoke aborte no meio.
+cleanup() {
+  local uid
+  rm -rf "$work_dir"
+  for uid in $(admin_api GET "/users?search=smoke.grafana." 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true); do
+    admin_api DELETE "/users/${uid}" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
 
 check() {
   local description="$1" ok="$2"
@@ -140,11 +148,14 @@ flow_structure() {
   done
 }
 investigation_state() {
-  local cadastro_id
+  local cadastro_id grafana_id
+  grafana_id="$(admin_api GET "/clients?clientId=grafana" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
   cadastro_id="$(admin_api GET "/clients?clientId=cadastro" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
   for path in /roles/log-investigator /roles/default-roles-workspace/composites/realm \
     "/clients/${cadastro_id}/scope-mappings/realm" /authentication/flows/workspace-browser/executions \
-    /authentication/flows/workspace-reset-credentials/executions; do
+    /authentication/flows/workspace-reset-credentials/executions \
+    /roles/grafana-viewer /roles/grafana-editor "/clients/${grafana_id}/scope-mappings/realm" \
+    "/clients/${grafana_id}/protocol-mappers/models" "/clients/${grafana_id}/default-client-scopes"; do
     echo "${path}: $(admin_api GET "$path" || echo MISSING)"
   done
   admin_api GET "" | grep -o '"browserFlow":"[^"]*"\|"resetCredentialsFlow":"[^"]*"\|"acr.loa.map":"[^}]*}"' \
@@ -255,6 +266,58 @@ admin_token="$(printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
 user_profile="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/${REALM}/users/profile" || true)"
 check "User Profile tem os atributos do cadastro" \
   "$([[ "$(contains "$user_profile" '"name":"mobilePhone"')" == true && "$(contains "$user_profile" '"name":"legacyUserId"')" == true ]] && echo true || echo false)"
+
+echo "== Grafana (spec 001 do grafana, T04)"
+grafana_json="$(admin_api GET "/clients?clientId=grafana" || true)"
+grafana_id="$(grep -o '"id":"[^"]*"' <<<"$grafana_json" | head -1 | cut -d'"' -f4 || true)"
+check "client grafana existe, confidencial, só Authorization Code (sem Direct Grant, implícito ou conta de serviço)" \
+  "$([[ "$(contains "$grafana_json" '"publicClient":false')" == true && "$(contains "$grafana_json" '"standardFlowEnabled":true')" == true \
+    && "$(contains "$grafana_json" '"directAccessGrantsEnabled":false')" == true && "$(contains "$grafana_json" '"implicitFlowEnabled":false')" == true \
+    && "$(contains "$grafana_json" '"serviceAccountsEnabled":false')" == true && "$(contains "$grafana_json" '"fullScopeAllowed":false')" == true ]] && echo true || echo false)"
+check "client grafana: PKCE S256, redirect e post-logout exatos (sem curinga)" \
+  "$([[ "$(contains "$grafana_json" '"pkce.code.challenge.method":"S256"')" == true \
+    && "$(contains "$grafana_json" '"redirectUris":\["http://localhost:3000/login/generic_oauth"\]')" == true \
+    && "$(contains "$grafana_json" '"post.logout.redirect.uris":"http://localhost:3000/login"')" == true ]] && echo true || echo false)"
+check "client grafana tem o mapper roles (realm roles no claim roles)" \
+  "$(contains "$(admin_api GET "/clients/${grafana_id}/protocol-mappers/models" || true)" '"claim.name":"roles"')"
+grafana_scope="$(admin_api GET "/clients/${grafana_id}/scope-mappings/realm" || true)"
+check "escopo do grafana: só admin, grafana-viewer e grafana-editor" \
+  "$([[ "$(contains "$grafana_scope" '"name":"grafana-viewer"')" == true && "$(contains "$grafana_scope" '"name":"grafana-editor"')" == true \
+    && "$(contains "$grafana_scope" '"name":"admin"')" == true && "$(contains "$grafana_scope" '"name":"user"')" == false ]] && echo true || echo false)"
+default_roles="$(admin_api GET /roles/default-roles-workspace/composites/realm || true)"
+# Falha explícita se a consulta não respondeu: resposta vazia não prova que as roles grafana-* ficaram fora do padrão.
+check "roles grafana-* não são padrão (usuário final do Cadastro não as recebe)" \
+  "$([[ -n "$default_roles" && "$default_roles" != *grafana-* ]] && echo true || echo false)"
+grafana_ropc="$(printf '%s' "$KC_GRAFANA_CLIENT_SECRET" | curl -s "${BASE_URL}/realms/${REALM}/protocol/openid-connect/token" \
+  --data-urlencode "grant_type=password" --data-urlencode "client_id=grafana" --data-urlencode "client_secret@-" \
+  --data-urlencode "username=smoke.ropc" --data-urlencode "password=x")"
+check "grafana recusa password grant (Direct Grant desligado)" "$(contains "$grafana_ropc" 'unauthorized_client')"
+# Usuários descartáveis: com grafana-viewer o claim roles traz só essa role; o usuário final (só roles padrão) não traz nenhuma grafana-*.
+grafana_probe_user() {
+  local name="$1" role="${2:-}" uid
+  admin_api POST /users -d "{\"username\":\"${name}\",\"enabled\":true}" >/dev/null || true
+  uid="$(admin_api GET "/users?username=${name}&exact=true" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+  if [[ -n "$role" ]]; then
+    # Só id e name: a descrição da role tem acentos e o curl do Git Bash no Windows os reenvia fora de UTF-8.
+    local role_id
+    role_id="$(admin_api GET "/roles/${role}" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    admin_api POST "/users/${uid}/role-mappings/realm" -d "[{\"id\":\"${role_id}\",\"name\":\"${role}\"}]" >/dev/null || true
+  fi
+  echo "$uid"
+}
+grafana_example_token() {
+  admin_api GET "/clients/${grafana_id}/evaluate-scopes/generate-example-access-token?scope=openid&userId=$1" || true
+}
+viewer_id="$(grafana_probe_user smoke.grafana.viewer grafana-viewer)"
+enduser_id="$(grafana_probe_user smoke.grafana.enduser)"
+viewer_token="$(grafana_example_token "$viewer_id")"
+enduser_token="$(grafana_example_token "$enduser_id")"
+check "token do usuário grafana-viewer traz roles só com grafana-viewer" \
+  "$([[ "$(contains "$viewer_token" '"roles":\["grafana-viewer"\]')" == true ]] && echo true || echo false)"
+check "token do usuário final do Cadastro (sem role grafana-*) não traz roles grafana-*" \
+  "$([[ -n "$enduser_token" && "$(contains "$enduser_token" 'grafana-')" == false ]] && echo true || echo false)"
+admin_api DELETE "/users/${viewer_id}" >/dev/null || true
+admin_api DELETE "/users/${enduser_id}" >/dev/null || true
 
 echo "== Rede de identidade e e-mail"
 # Requisição HTTP crua de dentro da rede workspace-identity, como faz o BFF do cadastro (imagem do próprio Keycloak:

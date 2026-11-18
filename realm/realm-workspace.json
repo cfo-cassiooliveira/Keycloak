@@ -58,6 +58,14 @@
         "name": "log-investigator",
         "description": "Investigação em logs: gera consultas por token; OTP obrigatório."
       },
+      {
+        "name": "grafana-viewer",
+        "description": "Grafana: acesso somente leitura (Viewer). Só por atribuição nominal."
+      },
+      {
+        "name": "grafana-editor",
+        "description": "Grafana: edição de dashboards (Editor). Só por atribuição nominal."
+      },
       { "name": "offline_access", "description": "${role_offline-access}" },
       { "name": "uma_authorization", "description": "${role_uma_authorization}" },
       {
@@ -113,6 +121,43 @@
       }
     },
     {
+      "clientId": "grafana",
+      "name": "Grafana",
+      "description": "Grafana OSS: login OIDC (Authorization Code + PKCE). Roles grafana-viewer, grafana-editor e admin no claim roles.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["http://localhost:3000/login/generic_oauth"],
+      "webOrigins": [],
+      "defaultClientScopes": ["basic", "acr", "roles", "profile", "email"],
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/login"
+      }
+    },
+    {
       "clientId": "admin-cli",
       "name": "${client_admin-cli}",
       "enabled": true,
@@ -126,7 +171,8 @@
   ],
 
   "scopeMappings": [
-    { "client": "cadastro", "roles": ["admin", "user", "log-investigator"] }
+    { "client": "cadastro", "roles": ["admin", "user", "log-investigator"] },
+    { "client": "grafana", "roles": ["admin", "grafana-viewer", "grafana-editor"] }
   ],
   "clientScopeMappings": {
     "realm-management": [

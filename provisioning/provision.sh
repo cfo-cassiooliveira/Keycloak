@@ -106,6 +106,7 @@ reconcile_workspace_realm() {
   kc create localization/en -r workspace -f "${PROVISIONING_DIR}/workspace-localization-en.json" >/dev/null
   log "workspace realm: user profile and localization texts applied"
   ensure_cadastro_client
+  ensure_grafana_client
 }
 
 # Roles do Cadastro (spec 001): "user" entra como role padrão de todo usuário novo.
@@ -122,6 +123,23 @@ ensure_workspace_roles() {
     kc create roles -r workspace -s name=log-investigator >/dev/null
     log "workspace realm: role created: log-investigator"
   fi
+  # Roles do Grafana (spec 001 do grafana, ADR-0002): nunca padrão, só por atribuição nominal (o usuário final do
+  # Cadastro vive neste realm e não pode entrar no Grafana). O Admin do Grafana é a role "admin" (OTP já obrigatório).
+  for role in grafana-viewer grafana-editor; do
+    if ! kc get "roles/${role}" -r workspace >/dev/null 2>&1; then
+      kc create roles -r workspace -s "name=${role}" >/dev/null
+      log "workspace realm: role created: ${role}"
+    fi
+  done
+  kc update roles/grafana-viewer -r workspace -s 'description=Grafana: acesso somente leitura (Viewer). Só por atribuição nominal.' >/dev/null
+  kc update roles/grafana-editor -r workspace -s 'description=Grafana: edição de dashboards (Editor). Só por atribuição nominal.' >/dev/null
+  for role in grafana-viewer grafana-editor; do
+    if kc get roles/default-roles-workspace/composites/realm -r workspace --fields name --format csv --noquotes \
+      | grep -qx "$role"; then
+      kc remove-roles -r workspace --rname default-roles-workspace --rolename "$role" >/dev/null
+      log "workspace realm: ${role} removed from default roles"
+    fi
+  done
   kc update roles/log-investigator -r workspace \
     -s 'description=Investigação em logs: gera consultas por token; OTP obrigatório.' >/dev/null
   kc add-roles -r workspace --rname default-roles-workspace --rolename user >/dev/null
@@ -393,6 +411,41 @@ ensure_cadastro_client() {
 JSON
   fi
   log "workspace realm: client cadastro reconciled"
+}
+
+# SSO do Grafana (ADR-0002 do grafana): client confidencial, Authorization Code + PKCE S256, sem Direct Grant nem
+# implícito, redirect e post-logout exatos. Mínimo privilégio: fullScopeAllowed=false e escopo só com grafana-viewer,
+# grafana-editor e admin; o mapper "roles" leva as realm roles (já filtradas pelo escopo) ao claim "roles".
+# Mantém profile/email nos scopes padrão: o Grafana exige e-mail/login para criar o usuário; o resto é removido.
+ensure_grafana_client() {
+  : "${KC_GRAFANA_CLIENT_SECRET:?KC_GRAFANA_CLIENT_SECRET is required (run scripts/generate-env.sh)}"
+  local id body scopes scope_name
+  id="$(workspace_client_id grafana)"
+  body="$(printf '{"clientId":"grafana","name":"Grafana","description":"Grafana OSS: login OIDC (Authorization Code + PKCE). Roles grafana-viewer, grafana-editor e admin no claim roles.","enabled":true,"publicClient":false,"clientAuthenticatorType":"client-secret","protocol":"openid-connect","standardFlowEnabled":true,"implicitFlowEnabled":false,"directAccessGrantsEnabled":false,"serviceAccountsEnabled":false,"frontchannelLogout":false,"fullScopeAllowed":false,"redirectUris":["http://localhost:3000/login/generic_oauth"],"webOrigins":[],"attributes":{"pkce.code.challenge.method":"S256","post.logout.redirect.uris":"http://localhost:3000/login"},"secret":"%s"}' \
+    "$KC_GRAFANA_CLIENT_SECRET")"
+  if [[ -z "$id" ]]; then
+    kc create clients -r workspace -f - <<<"$body" >/dev/null
+    id="$(workspace_client_id grafana)"
+    log "workspace realm: client created: grafana"
+  else
+    kc update "clients/${id}" -r workspace -f - <<<"$body" >/dev/null
+  fi
+  printf '[%s,%s,%s]' "$(kc get roles/admin -r workspace)" "$(kc get roles/grafana-viewer -r workspace)" \
+    "$(kc get roles/grafana-editor -r workspace)" \
+    | kc create "clients/${id}/scope-mappings/realm" -r workspace -f - >/dev/null
+  scopes="$(kc get client-scopes -r workspace --fields id,name --format csv --noquotes)"
+  for scope_name in basic acr roles profile email; do
+    kc update "clients/${id}/default-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null
+  done
+  for scope_name in web-origins address phone microprofile-jwt organization; do
+    kc delete "clients/${id}/default-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null 2>&1 || true
+  done
+  if ! kc get "clients/${id}/protocol-mappers/models" -r workspace --fields name --format csv --noquotes | grep -qx roles; then
+    kc create "clients/${id}/protocol-mappers/models" -r workspace -f - >/dev/null <<'JSON'
+{"name":"roles","protocol":"openid-connect","protocolMapper":"oidc-usermodel-realm-role-mapper","config":{"claim.name":"roles","multivalued":"true","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}}
+JSON
+  fi
+  log "workspace realm: client grafana reconciled"
 }
 
 disable_admin_cli_password_grant() {
