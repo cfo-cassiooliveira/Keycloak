@@ -1,6 +1,6 @@
 # ADR-0003: Tema de login em Bootstrap 5 sobre o tema `base`
 
-- **Status**: Proposto
+- **Status**: Aceito (2026-11-18)
 - **Data**: 2026-11-12
 - **Decisores**: Cassio Oliveira (responsável técnico)
 - **Artigos da Constituição relacionados**: Art. II.1, Art. IV.1, Art. IV.7

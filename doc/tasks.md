@@ -83,7 +83,7 @@ Comando padrão de verificação: `scripts/build.sh` (= `./mvnw -B verify` no co
 
 ## Fase 4 — Entrega
 
-- [ ] **T09** — Documentação e revisão (documentação feita; falta a revisão `code-review-qa` e aceite dos ADRs)
+- [ ] **T09** — Documentação e revisão (documentação feita; ADRs 0001-0003 aceitos em 2026-11-18; falta a revisão `code-review-qa`)
   - Depende de: T01–T08
   - Arquivos: `README.md` (como subir, como criar um novo SPI: factory + `META-INF/services` + teste), `CLAUDE.md`, ADRs → *Aceito*.
   - Testes inclusos: n/a (documentação) — reexecutar `scripts/build.sh` e `scripts/smoke-test.sh` no fechamento.

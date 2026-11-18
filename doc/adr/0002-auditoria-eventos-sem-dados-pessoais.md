@@ -1,6 +1,6 @@
 # ADR-0002: Auditoria de eventos do Keycloak sem dados pessoais
 
-- **Status**: Proposto
+- **Status**: Aceito (2026-11-18)
 - **Data**: 2026-11-12
 - **Decisores**: Cassio Oliveira (responsável técnico)
 - **Artigos da Constituição relacionados**: Art. IV.1, Art. IV.6, Art. VI.1, Art. VI.3
