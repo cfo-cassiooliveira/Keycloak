@@ -196,7 +196,7 @@ só para o console e não entra no fallback, então não há como reenviá-la de
 
 - **Auditoria**: GELF HTTP para `graylog:12202/gelf` com confirmação (202), stream `Keycloak - Auditoria`. Campos:
   tipo/operação, erro, `user_id` / `target_user_id` / `actor_user_id` (ids técnicos), client, realm, `event_id`,
-  versões, ambiente, host e `trace_id` quando há tracing. Sem username, e-mail, IP ou sessão.
+  versões, ambiente, host e `trace_id` quando há tracing. Sem username, e-mail, IP ou sessão (exceção: `masked_login` mascarado nos eventos de migração, ADR-0007).
 - **Graylog fora do ar**: a mensagem vai para `/opt/keycloak/data/log/audit-fallback.log` (volume
   `keycloak-audit-fallback`) e o container loga `Could not save audit log to Graylog ...; fallback performed ...`
   (primeira falha na hora, depois um resumo por minuto). Na volta, o evento `AUDIT_FALLBACK_USED` gera alerta.
