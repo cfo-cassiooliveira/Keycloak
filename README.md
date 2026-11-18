@@ -16,6 +16,8 @@ analisado no **SonarQube** (projeto `keycloak`).
 
 Planejamento: [spec](doc/spec.md) · [plano](doc/plan.md) · [tarefas](doc/tasks.md) · [ADRs](doc/adr/).
 
+Sumário: [Requisitos](#requisitos-da-máquina) · [Como usar](#como-usar) · [Migração do Legado](#migração-dos-usuários-do-legado) · [Graylog](#graylog) · [Tema](#tema-de-login) · [Novo SPI](#como-criar-um-novo-spi) · [Pendências](#pendências) · [Grafana](#grafana)
+
 ## Requisitos da máquina
 
 Só o **Docker** (Docker Desktop com ≥ 4 GB livres). Não é preciso instalar JDK nem Maven: build e testes rodam
