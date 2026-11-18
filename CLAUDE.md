@@ -91,6 +91,11 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
   `loa-max-age=0`), e o `auth_time` vira a hora do step-up. Login comum termina com `acr=password`, mesmo com OTP; o
   reset de senha também, mesmo com `acr_values=otp`. O refresh de token do step-up mantém `acr=otp` e o `auth_time` do
   step-up pela sessão do client (até 10 h): daí o limite de `auth_time` (`LogInvestigatorOtpBypassIT`).
+- Client `grafana` (spec 001 do grafana, ADR-0002; `ensure_grafana_client` + `realm-workspace.json`): confidencial, code +
+  PKCE S256, sem Direct Grant/implícito, redirect e post-logout exatos, `fullScopeAllowed=false` com escopo só em `admin`,
+  `grafana-viewer` e `grafana-editor`; mapper `roles` (realm roles no claim `roles`). `grafana-*` nunca em
+  `default-roles-workspace` e nunca atribuídas ao usuário final do Cadastro (provado pelo `GrafanaRealmIT` e smoke).
+  `KC_GRAFANA_CLIENT_SECRET` só no `.env`.
 - OTP do `log-investigator` é configurado **antes** de atribuir a role (README): sem OTP, o primeiro login com a role
   cadastra o autenticador só com a senha.
 - Fluxo `workspace-browser`: cookie ou LoA 1 (senha) → LoA 2 (OTP, só quando pedido) → OTP pela role
@@ -147,3 +152,7 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - ADR-0005: CI e cadeia de suprimentos (ações por SHA, ShellCheck, Trivy com exceções que expiram).
 - ADR-0006: migração sob demanda dos usuários do Legado por Authenticator + API do Legado (aceito).
 - ADR-0007: identificador mascarado (`masked_login`) nos eventos de migração, exceção ao ADR-0002 (aceito).
+
+## Grafana
+
+Client `grafana` e roles `grafana-*` consumidos pelo `../grafana` (ADR-0002 de lá); ordem de subida e testes em `../grafana/README.md`.

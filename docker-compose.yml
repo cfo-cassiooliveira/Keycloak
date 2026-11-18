@@ -7,6 +7,8 @@ name: keycloak
 services:
   postgres:
     image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+    # Teto de memória: um serviço não derruba os demais na VM do WSL2 (20 GB, ver ~/.wslconfig).
+    mem_limit: 512m
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -23,6 +25,8 @@ services:
   keycloak:
     build: .
     image: workspace-keycloak:0.3.2
+    # Teto de memória: um serviço não derruba os demais na VM do WSL2 (20 GB, ver ~/.wslconfig).
+    mem_limit: 1536m
     # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
     command: ["start", "--optimized", "--import-realm"]
     environment:
@@ -98,6 +102,8 @@ services:
   # SMTP de desenvolvimento: guarda os e-mails (reset de senha) sem entregá-los; caixa em http://127.0.0.1:8025.
   mailpit:
     image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    # Teto de memória: um serviço não derruba os demais na VM do WSL2 (20 GB, ver ~/.wslconfig).
+    mem_limit: 128m
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
       MP_SMTP_AUTH_ALLOW_INSECURE: "true"
@@ -116,6 +122,7 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD ausente. Rode ./scripts/generate-env.sh}
       KC_AUTOMATION_CLIENT_SECRET: ${KC_AUTOMATION_CLIENT_SECRET:?KC_AUTOMATION_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_CADASTRO_CLIENT_SECRET: ${KC_CADASTRO_CLIENT_SECRET:?KC_CADASTRO_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+      KC_GRAFANA_CLIENT_SECRET: ${KC_GRAFANA_CLIENT_SECRET:?KC_GRAFANA_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
     volumes:
       - ./provisioning:/provisioning:ro
     depends_on:

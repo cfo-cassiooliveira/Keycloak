@@ -82,6 +82,22 @@ isso o limite de `auth_time`. O reset de senha também conclui o login com `acr=
 autenticador no primeiro login, só com a senha: quem tiver a senha nesse momento fica com o segundo fator. Peça ao
 usuário para configurar o OTP (Conta → Segurança → Autenticador) e só então atribua a role.
 
+**SSO do Grafana** ([ADR-0002 do grafana](../grafana/docs/adr/0002-sso-keycloak-grafana.md)): o realm entrega o client
+confidencial `grafana` (Authorization Code + PKCE S256, sem Direct Grant, implícito nem conta de serviço; redirect exato
+`http://localhost:3000/login/generic_oauth` e post-logout `http://localhost:3000/login`; `fullScopeAllowed=false`).
+Roles de realm `grafana-viewer` (Viewer) e `grafana-editor` (Editor); a role `admin` (OTP já obrigatório) vira Admin do
+Grafana. O mapper `roles` leva as realm roles ao claim `roles`, filtradas pelo escopo do client (só `grafana-*` e
+`admin`; `user` e `log-investigator` não vão). As roles `grafana-*` nunca são padrão: atribua só a pessoas nomeadas
+(Users → Role mapping). Quem não tem nenhuma delas (inclusive o usuário final do Cadastro, que vive neste realm) chega
+sem role e o Grafana nega o login (`role_attribute_strict`). O client mantém `profile` e `email` nos scopes padrão
+porque o Grafana precisa de login e e-mail para criar o usuário. O segredo `KC_GRAFANA_CLIENT_SECRET` é gerado pelo
+`generate-env.sh` e aplicado pelo provisioner; o `generate-env.sh` do grafana o copia sem exibi-lo. Só ambiente local.
+
+> **Atenção:** a role `admin` é a mesma do realm compartilhado com o Cadastro, então **todo usuário com a role `admin`
+> vira Admin da organização no Grafana** (risco aceito no ADR-0002 do grafana). Conceda `admin` com critério.
+> O smoke do keycloak deve rodar **sem** `MSYS_NO_PATHCONV` no Git Bash (os caminhos `/x` dos comandos do
+> script não devem ser convertidos pelo shell).
+
 Containers da rede `workspace-identity` (ex.: BFF do cadastro) acessam o Keycloak em `http://keycloak:8080`. Com
 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, token e JWKS respondem nesse endereço e o `issuer` continua
 `http://localhost:8180/realms/...`, o mesmo que o navegador vê.
@@ -228,3 +244,7 @@ versão no `pom.xml` e no `Dockerfile`, e backup do volume `keycloak-db-data` an
   futura com rate limit/atraso uniforme.
 - E2E da migração não cobre o Legado fora do ar nem o admin migrado configurando OTP no navegador (cobertos por
   `LegacyLoginIT`); E2E no CI depende de um Keycloak compartilhado (hoje roda local).
+
+## Grafana
+
+O `../grafana` usa o client `grafana` deste realm para o login único; detalhes, ordem de subida e testes em [../grafana](../grafana/README.md). Não rode este stack junto do Graylog nos smokes.

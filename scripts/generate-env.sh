@@ -31,6 +31,8 @@ ensure_key KC_BOOTSTRAP_ADMIN_PASSWORD "$(random 32)"
 ensure_key KC_AUTOMATION_CLIENT_SECRET "$(random 40)"
 # Segredo do client confidencial "cadastro" (BFF do Cadastro). O mesmo valor vai para o .env do cadastro.
 ensure_key KC_CADASTRO_CLIENT_SECRET "$(random 40)"
+# Segredo do client confidencial "grafana" (SSO do Grafana). O grafana/scripts/generate-env.sh o copia, sem exibir.
+ensure_key KC_GRAFANA_CLIENT_SECRET "$(random 40)"
 
 if [[ "$created" == true ]]; then
   echo ".env criado. Admin temporário: bootstrap-admin — senha em KC_BOOTSTRAP_ADMIN_PASSWORD no .env."
