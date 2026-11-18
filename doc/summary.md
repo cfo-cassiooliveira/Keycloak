@@ -18,7 +18,7 @@ Keycloak 26.8.2 próprio (Art. IV.2), reproduzível com `docker compose`, endure
 
 ## Estado das tarefas (tasks.md)
 - Feitas: T01-T08, P1-P3, R1-R9, G1-G6, I2, I3, S4-S7, N8, B1 e itens extras (41 marcados `[x]`).
-- Abertas (2): T09 (falta revisão `code-review-qa` e aceite dos ADRs 0001-0003, ainda "Proposto") e DoD "Revisão sem itens bloqueantes".
+- Abertas (2): T09 (falta a revisão `code-review-qa`; ADRs 0001-0003 aceitos em 2026-11-18) e DoD "Revisão sem itens bloqueantes".
 - Código presente: `audit/` (+ `gelf/`), `legacy/`, tema `workspace`, `provisioning/provision.sh`, `theme-tests/`.
 
 ## Links
