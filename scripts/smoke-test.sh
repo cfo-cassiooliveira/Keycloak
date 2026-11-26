@@ -14,12 +14,14 @@ REALM="workspace"
 PROBE_USERNAME="smoke.probe.$(date +%s)"
 failures=0
 work_dir="$(mktemp -d)"
-# Remove os usuários descartáveis do Grafana (smoke.grafana.*) mesmo que o smoke aborte no meio.
+# Remove os usuários descartáveis do Grafana e da importação (smoke.grafana.*, smoke.importer.*) mesmo que o smoke aborte no meio.
 cleanup() {
-  local uid
+  local uid prefix
   rm -rf "$work_dir"
-  for uid in $(admin_api GET "/users?search=smoke.grafana." 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true); do
-    admin_api DELETE "/users/${uid}" >/dev/null 2>&1 || true
+  for prefix in smoke.grafana. smoke.importer.; do
+    for uid in $(admin_api GET "/users?search=${prefix}" 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true); do
+      admin_api DELETE "/users/${uid}" >/dev/null 2>&1 || true
+    done
   done
 }
 trap cleanup EXIT
@@ -266,6 +268,109 @@ admin_token="$(printf '%s' "$KC_AUTOMATION_CLIENT_SECRET" \
 user_profile="$(curl -fs -H "Authorization: Bearer ${admin_token}" "${BASE_URL}/admin/realms/${REALM}/users/profile" || true)"
 check "User Profile tem os atributos do cadastro" \
   "$([[ "$(contains "$user_profile" '"name":"mobilePhone"')" == true && "$(contains "$user_profile" '"name":"legacyUserId"')" == true ]] && echo true || echo false)"
+
+echo "== Importação em lote (spec 002 do rabbitmq, K0)"
+importer_token() {
+  printf '%s' "$KC_CADASTRO_IMPORTER_CLIENT_SECRET" \
+    | curl -fs "${BASE_URL}/realms/${REALM}/protocol/openid-connect/token" \
+      --data-urlencode "grant_type=client_credentials" --data-urlencode "client_id=cadastro-importer" \
+      --data-urlencode "client_secret@-" --data-urlencode "scope=${1:-kc-admin-api}" \
+    | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true
+}
+# Status HTTP de uma chamada à Admin API com o token do cadastro-importer. Uso: importer_status MÉTODO CAMINHO [args do curl]
+importer_status() {
+  local method="$1" path="$2"
+  shift 2
+  curl -s -o /dev/null -w '%{http_code}' -X "$method" -H "Authorization: Bearer $(importer_token)" \
+    -H 'Content-Type: application/json' "${BASE_URL}/admin/realms/${REALM}${path}" "$@"
+}
+importer_json="$(admin_api GET "/clients?clientId=cadastro-importer" || true)"
+importer_id="$(grep -o '"id":"[^"]*"' <<<"$importer_json" | head -1 | cut -d'"' -f4 || true)"
+check "client cadastro-importer: confidencial, só conta de serviço (sem fluxo de usuário), escopo mínimo" \
+  "$([[ "$(contains "$importer_json" '"publicClient":false')" == true && "$(contains "$importer_json" '"serviceAccountsEnabled":true')" == true \
+    && "$(contains "$importer_json" '"standardFlowEnabled":false')" == true && "$(contains "$importer_json" '"implicitFlowEnabled":false')" == true \
+    && "$(contains "$importer_json" '"directAccessGrantsEnabled":false')" == true && "$(contains "$importer_json" '"fullScopeAllowed":false')" == true ]] && echo true || echo false)"
+importer_sa_id="$(admin_api GET "/clients/${importer_id}/service-account-user" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+realm_management_id="$(admin_api GET "/clients?clientId=realm-management" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+importer_roles="$(admin_api GET "/users/${importer_sa_id}/role-mappings/clients/${realm_management_id}" || true)"
+check "conta de serviço do importer tem só view-users e manage-users do realm-management" \
+  "$([[ "$(contains "$importer_roles" '"name":"view-users"')" == true && "$(contains "$importer_roles" '"name":"manage-users"')" == true \
+    && "$(grep -o '"name":"[^"]*"' <<<"$importer_roles" | wc -l)" -eq 2 ]] && echo true || echo false)"
+check "importer sem realm role no escopo do client" \
+  "$([[ "$(admin_api GET "/clients/${importer_id}/scope-mappings/realm" || echo MISSING)" == '[]' ]] && echo true || echo false)"
+cadastro_client_id="$(admin_api GET "/clients?clientId=cadastro" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+check "role user-importer existe, não é padrão e está no escopo do client cadastro" \
+  "$([[ "$(contains "$(admin_api GET /roles/user-importer || true)" '"name":"user-importer"')" == true \
+    && "$(admin_api GET /roles/default-roles-workspace/composites/realm || echo user-importer)" != *user-importer* \
+    && "$(admin_api GET "/clients/${cadastro_client_id}/scope-mappings/realm" || true)" == *'"name":"user-importer"'* ]] && echo true || echo false)"
+realm_now="$(admin_api GET "" || true)"
+check "realm: lifespan de e-mail de admin no padrão (não 72 h; o 72 h vai por chamada) e SMTP aponta para o Mailpit" \
+  "$([[ "$(contains "$realm_now" '"actionTokenGeneratedByAdminLifespan":259200')" == false \
+    && "$(contains "$realm_now" '"smtpServer":{[^}]*"host":"mailpit"')" == true ]] && echo true || echo false)"
+check "token do cadastro-importer sem o scope kc-admin-api é recusado pela Admin API" \
+  "$([[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(importer_token openid)" \
+    "${BASE_URL}/admin/realms/${REALM}/users?max=1")" == 401 ]] && echo true || echo false)"
+
+# Criação como o consumidor fará: sem senha, com UPDATE_PASSWORD e importLineId.
+import_stamp="$(date +%s)"
+import_username="smoke.importer.${import_stamp}"
+import_email="${import_username}@example.test"
+import_line_id="smoke-line-${import_stamp}"
+create_status="$(importer_status POST /users -d "{\"username\":\"${import_username}\",\"email\":\"${import_email}\",\"firstName\":\"Smoke\",\"lastName\":\"Importer\",\"enabled\":true,\"requiredActions\":[\"UPDATE_PASSWORD\"],\"attributes\":{\"importLineId\":[\"${import_line_id}\"]}}")"
+check "importer cria usuário (201) pela Admin API" "$([[ "$create_status" == 201 ]] && echo true || echo false)"
+import_user_json="$(admin_api GET "/users?username=${import_username}&exact=true" || true)"
+import_user_id="$(grep -o '"id":"[^"]*"' <<<"$import_user_json" | head -1 | cut -d'"' -f4 || true)"
+check "usuário importado tem UPDATE_PASSWORD e importLineId" \
+  "$([[ "$(contains "$import_user_json" '"requiredActions":\["UPDATE_PASSWORD"\]')" == true \
+    && "$(contains "$import_user_json" "\"importLineId\":\[\"${import_line_id}\"\]")" == true ]] && echo true || echo false)"
+check "usuário importado NÃO tem senha (nenhuma credencial)" \
+  "$([[ "$(admin_api GET "/users/${import_user_id}/credentials" || echo MISSING)" == '[]' ]] && echo true || echo false)"
+check "importer acha o usuário pelo importLineId (idempotência do consumidor)" \
+  "$(contains "$(curl -s -H "Authorization: Bearer $(importer_token)" "${BASE_URL}/admin/realms/${REALM}/users?q=importLineId:${import_line_id}" || true)" "\"username\":\"${import_username}\"")"
+check "importer envia o e-mail de ativação (execute-actions-email?lifespan=259200 com UPDATE_PASSWORD, 204)" \
+  "$([[ "$(importer_status PUT "/users/${import_user_id}/execute-actions-email?lifespan=259200" -d '["UPDATE_PASSWORD"]')" == 204 ]] && echo true || echo false)"
+# Validade do link do e-mail de ativação enviado a $1: o link carrega um JWT (key=...) e vale exp - iat. Imprime "mail=nao" se o e-mail não chegou.
+activation_lifespan() {
+  local mail_id="" mail_text="" mail_key mail_payload mail_exp mail_iat
+  for _ in $(seq 1 10); do
+    mail_id="$(curl -fs -G http://127.0.0.1:8025/api/v1/search --data-urlencode "query=to:$1" \
+      | grep -o '"ID":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+    [[ -n "$mail_id" ]] && break
+    sleep 1
+  done
+  if [[ -z "$mail_id" ]]; then echo "mail=nao"; return 0; fi
+  mail_text="$(curl -fs "http://127.0.0.1:8025/api/v1/message/${mail_id}" | sed 's/\u0026/\&/g' || true)"
+  mail_key="$(grep -o 'key=[A-Za-z0-9_.-]*' <<<"$mail_text" | head -1 | cut -d= -f2 || true)"
+  mail_payload="$(cut -d. -f2 <<<"$mail_key" | tr '_-' '/+' | base64 -d 2>/dev/null || true)"
+  mail_exp="$(grep -o '"exp":[0-9]*' <<<"$mail_payload" | cut -d: -f2 || true)"
+  mail_iat="$(grep -o '"iat":[0-9]*' <<<"$mail_payload" | cut -d: -f2 || true)"
+  if [[ -n "$mail_exp" && -n "$mail_iat" ]]; then echo $((mail_exp - mail_iat)); else echo "mail=sem-jwt"; fi
+}
+check "e-mail de ativação chegou no Mailpit e o link vale 72 h (exp - iat = 259200)" \
+  "$([[ "$(activation_lifespan "$import_email")" == 259200 ]] && echo true || echo false)"
+# Regressão: sem ?lifespan o e-mail NÃO pode valer 72 h (o lifespan do realm fica no padrão e não alonga os demais e-mails de admin).
+plain_username="smoke.importer.p.${import_stamp}"
+plain_email="${plain_username}@example.test"
+importer_status POST /users -d "{\"username\":\"${plain_username}\",\"email\":\"${plain_email}\",\"firstName\":\"Smoke\",\"lastName\":\"Plain\",\"enabled\":true,\"requiredActions\":[\"UPDATE_PASSWORD\"],\"attributes\":{\"importLineId\":[\"smoke-line-plain-${import_stamp}\"]}}" >/dev/null
+plain_user_id="$(grep -o '"id":"[^"]*"' <<<"$(admin_api GET "/users?username=${plain_username}&exact=true" || true)" | head -1 | cut -d'"' -f4 || true)"
+importer_status PUT "/users/${plain_user_id}/execute-actions-email" -d '["UPDATE_PASSWORD"]' >/dev/null
+plain_lifespan="$(activation_lifespan "$plain_email")"
+check "execute-actions-email SEM ?lifespan não fica com 72 h (usa o padrão do realm)" \
+  "$([[ "$plain_lifespan" =~ ^[0-9]+$ && "$plain_lifespan" -ne 259200 ]] && echo true || echo false)"
+admin_api DELETE "/users/${plain_user_id}" >/dev/null || true
+# O GET do realm devolve a representação reduzida (sem SMTP nem configuração) a qualquer administrador: não vaza nada.
+check "importer é negado fora do escopo (clients, fluxos, roles: 403; realm sem SMTP) e nada é criado" \
+  "$([[ "$(importer_status GET /clients)" == 403 \
+    && "$(curl -s -H "Authorization: Bearer $(importer_token)" "${BASE_URL}/admin/realms/${REALM}" | grep -c smtpServer)" -eq 0 \
+    && "$(importer_status PUT / -d '{"resetPasswordAllowed":false}')" == 403 \
+    && "$(importer_status POST /clients -d '{"clientId":"smoke-denied"}')" == 403 \
+    && "$(importer_status GET /authentication/flows)" == 403 \
+    && "$(importer_status POST /roles -d '{"name":"smoke-denied"}')" == 403 \
+    && "$(admin_api GET "/clients?clientId=smoke-denied" || echo MISSING)" == '[]' \
+    && "$(admin_api GET /roles/smoke-denied >/dev/null 2>&1 && echo EXISTS || echo none)" == none ]] && echo true || echo false)"
+check "importLineId só é visível e editável por admin/serviço (não editável pelo próprio usuário)" \
+  "$([[ "$(grep -o '"name":"importLineId".*' <<<"$(admin_api GET /users/profile || true)" | grep -o '"permissions":{[^}]*}' | head -1)" == '"permissions":{"view":["admin"],"edit":["admin"]}' ]] && echo true || echo false)"
+admin_api DELETE "/users/${import_user_id}" >/dev/null || true
 
 echo "== Grafana (spec 001 do grafana, T04)"
 grafana_json="$(admin_api GET "/clients?clientId=grafana" || true)"

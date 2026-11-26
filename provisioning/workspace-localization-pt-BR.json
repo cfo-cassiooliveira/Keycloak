@@ -16,5 +16,7 @@
   "invalidPostalCode": "Informe o CEP com 8 dígitos.",
   "invalidCityIbgeCode": "Informe o código IBGE com 7 dígitos.",
   "invalidState": "Informe a sigla da UF com 2 letras maiúsculas.",
+  "importLineId": "Id da linha de importação",
+  "invalidImportLineId": "Id da linha de importação inválido.",
   "invalidLegacyUserId": "Id do Legado inválido."
 }

@@ -73,7 +73,7 @@ services:
       # Fallback da auditoria (registros que o Graylog não aceitou), persistente entre reinícios (ADR-0004).
       - keycloak-audit-fallback:/opt/keycloak/data/log
       # CA pública do Legado (scripts/internal-credentials.sh do legado): a única que o Keycloak aceita ao chamá-lo.
-      - ../legado/secrets/internal/ca.crt:/opt/keycloak/conf/legado-ca.pem:ro
+      - ../legado-cadastro-usuarios/secrets/internal/ca.crt:/opt/keycloak/conf/legado-ca.pem:ro
     ports:
       - "127.0.0.1:8180:8080"
       - "127.0.0.1:9100:9000"
@@ -103,10 +103,13 @@ services:
   mailpit:
     image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
     # Teto de memória: um serviço não derruba os demais na VM do WSL2 (20 GB, ver ~/.wslconfig).
-    mem_limit: 128m
+    mem_limit: 256m
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
       MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      # O padrão do Mailpit é guardar só as 500 mensagens mais recentes; a importação em lote do Cadastro envia milhares de
+      # e-mails de ativação e o E2E precisa conferir todos.
+      MP_MAX_MESSAGES: "10000"
     ports:
       - "127.0.0.1:8025:8025"
     restart: unless-stopped
@@ -123,6 +126,7 @@ services:
       KC_AUTOMATION_CLIENT_SECRET: ${KC_AUTOMATION_CLIENT_SECRET:?KC_AUTOMATION_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_CADASTRO_CLIENT_SECRET: ${KC_CADASTRO_CLIENT_SECRET:?KC_CADASTRO_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_GRAFANA_CLIENT_SECRET: ${KC_GRAFANA_CLIENT_SECRET:?KC_GRAFANA_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+      KC_CADASTRO_IMPORTER_CLIENT_SECRET: ${KC_CADASTRO_IMPORTER_CLIENT_SECRET:?KC_CADASTRO_IMPORTER_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
     volumes:
       - ./provisioning:/provisioning:ro
     depends_on:

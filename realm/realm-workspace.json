@@ -59,6 +59,10 @@
         "description": "Investigação em logs: gera consultas por token; OTP obrigatório."
       },
       {
+        "name": "user-importer",
+        "description": "Importação em lote de usuários no Cadastro; exige acr=otp recente. Só por atribuição nominal."
+      },
+      {
         "name": "grafana-viewer",
         "description": "Grafana: acesso somente leitura (Viewer). Só por atribuição nominal."
       },
@@ -121,6 +125,25 @@
       }
     },
     {
+      "clientId": "cadastro-importer",
+      "name": "Cadastro importer",
+      "description": "Importação em lote do Cadastro: só conta de serviço (client credentials) para criar usuários sem senha.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["basic"],
+      "optionalClientScopes": ["kc-admin-api"]
+    },
+    {
       "clientId": "grafana",
       "name": "Grafana",
       "description": "Grafana OSS: login OIDC (Authorization Code + PKCE). Roles grafana-viewer, grafana-editor e admin no claim roles.",
@@ -171,12 +194,13 @@
   ],
 
   "scopeMappings": [
-    { "client": "cadastro", "roles": ["admin", "user", "log-investigator"] },
+    { "client": "cadastro", "roles": ["admin", "user", "log-investigator", "user-importer"] },
     { "client": "grafana", "roles": ["admin", "grafana-viewer", "grafana-editor"] }
   ],
   "clientScopeMappings": {
     "realm-management": [
-      { "client": "cadastro", "roles": ["view-users", "query-users", "manage-users"] }
+      { "client": "cadastro", "roles": ["view-users", "query-users", "manage-users"] },
+      { "client": "cadastro-importer", "roles": ["view-users", "manage-users"] }
     ]
   },
   "users": [
@@ -185,6 +209,12 @@
       "enabled": true,
       "serviceAccountClientId": "cadastro",
       "clientRoles": { "realm-management": ["view-users", "query-users", "manage-users"] }
+    },
+    {
+      "username": "service-account-cadastro-importer",
+      "enabled": true,
+      "serviceAccountClientId": "cadastro-importer",
+      "clientRoles": { "realm-management": ["view-users", "manage-users"] }
     }
   ],
 

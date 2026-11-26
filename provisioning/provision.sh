@@ -96,9 +96,10 @@ reconcile_workspace_realm() {
     -s adminEventsDetailsEnabled=false \
     -s bruteForceProtected=true \
     -s resetPasswordAllowed=true \
+    -s actionTokenGeneratedByAdminLifespan=43200 \
     -s registrationEmailAsUsername=false \
     -s 'smtpServer={"host":"mailpit","port":"1025","from":"no-reply@workspace.local","fromDisplayName":"Workspace","auth":"false","ssl":"false","starttls":"false"}' >/dev/null
-  log "workspace realm: audit listener, no event storage, password reset, username policy and SMTP reconciled"
+  log "workspace realm: audit listener, no event storage, password reset, username policy, SMTP and default admin action-token lifespan (12h) reconciled"
   ensure_workspace_roles
   ensure_workspace_auth_flows
   kc update users/profile -r workspace -f "${PROVISIONING_DIR}/workspace-user-profile.json" >/dev/null
@@ -107,6 +108,7 @@ reconcile_workspace_realm() {
   log "workspace realm: user profile and localization texts applied"
   ensure_cadastro_client
   ensure_grafana_client
+  ensure_cadastro_importer_client
 }
 
 # Roles do Cadastro (spec 001): "user" entra como role padrão de todo usuário novo.
@@ -140,6 +142,19 @@ ensure_workspace_roles() {
       log "workspace realm: ${role} removed from default roles"
     fi
   done
+  # Importação em lote (spec 002 do rabbitmq, ADR-0006): role do admin que envia o arquivo no Cadastro. Nunca padrão;
+  # o OTP recente (acr=otp + auth_time) é exigido pelo Cadastro, como na role log-investigator.
+  if ! kc get roles/user-importer -r workspace >/dev/null 2>&1; then
+    kc create roles -r workspace -s name=user-importer >/dev/null
+    log "workspace realm: role created: user-importer"
+  fi
+  kc update roles/user-importer -r workspace \
+    -s 'description=Importação em lote de usuários no Cadastro; exige acr=otp recente. Só por atribuição nominal.' >/dev/null
+  if kc get roles/default-roles-workspace/composites/realm -r workspace --fields name --format csv --noquotes \
+    | grep -qx user-importer; then
+    kc remove-roles -r workspace --rname default-roles-workspace --rolename user-importer >/dev/null
+    log "workspace realm: user-importer removed from default roles"
+  fi
   kc update roles/log-investigator -r workspace \
     -s 'description=Investigação em logs: gera consultas por token; OTP obrigatório.' >/dev/null
   kc add-roles -r workspace --rname default-roles-workspace --rolename user >/dev/null
@@ -383,8 +398,8 @@ ensure_cadastro_client() {
   else
     kc update "clients/${id}" -r workspace -f - <<<"$body" >/dev/null
   fi
-  printf '[%s,%s,%s]' "$(kc get roles/admin -r workspace)" "$(kc get roles/user -r workspace)" \
-    "$(kc get roles/log-investigator -r workspace)" \
+  printf '[%s,%s,%s,%s]' "$(kc get roles/admin -r workspace)" "$(kc get roles/user -r workspace)" \
+    "$(kc get roles/log-investigator -r workspace)" "$(kc get roles/user-importer -r workspace)" \
     | kc create "clients/${id}/scope-mappings/realm" -r workspace -f - >/dev/null
   realm_management_id="$(workspace_client_id realm-management)"
   for role in view-users query-users manage-users; do
@@ -446,6 +461,53 @@ ensure_grafana_client() {
 JSON
   fi
   log "workspace realm: client grafana reconciled"
+}
+
+# Importador em lote do Cadastro (spec 002 do rabbitmq, ADR-0006): client confidencial só com conta de serviço
+# (client credentials), sem fluxo de usuário. Menor privilégio: fullScopeAllowed=false, nenhuma realm role no escopo e
+# só view-users e manage-users do realm-management (nada de manage-realm, manage-clients ou query-users). Cria usuário
+# sem senha; o e-mail de ativação (execute-actions-email) usa o SMTP do realm e recebe o lifespan de 72 h por
+# chamada (?lifespan=259200); o lifespan do realm fica no padrão do Keycloak (12 h) para não alongar os demais e-mails de admin.
+ensure_cadastro_importer_client() {
+  : "${KC_CADASTRO_IMPORTER_CLIENT_SECRET:?KC_CADASTRO_IMPORTER_CLIENT_SECRET is required (run scripts/generate-env.sh)}"
+  local id body realm_management_id role scopes scope_name sa_id extra_roles
+  id="$(workspace_client_id cadastro-importer)"
+  body="$(printf '{"clientId":"cadastro-importer","name":"Cadastro importer","description":"Importação em lote do Cadastro: só conta de serviço (client credentials) para criar usuários sem senha.","enabled":true,"publicClient":false,"clientAuthenticatorType":"client-secret","protocol":"openid-connect","standardFlowEnabled":false,"implicitFlowEnabled":false,"directAccessGrantsEnabled":false,"serviceAccountsEnabled":true,"frontchannelLogout":false,"fullScopeAllowed":false,"redirectUris":[],"webOrigins":[],"secret":"%s"}' \
+    "$KC_CADASTRO_IMPORTER_CLIENT_SECRET")"
+  if [[ -z "$id" ]]; then
+    kc create clients -r workspace -f - <<<"$body" >/dev/null
+    id="$(workspace_client_id cadastro-importer)"
+    log "workspace realm: client created: cadastro-importer"
+  else
+    kc update "clients/${id}" -r workspace -f - <<<"$body" >/dev/null
+  fi
+  realm_management_id="$(workspace_client_id realm-management)"
+  for role in view-users manage-users; do
+    printf '[%s]' "$(kc get "clients/${realm_management_id}/roles/${role}" -r workspace)" \
+      | kc create "clients/${id}/scope-mappings/clients/${realm_management_id}" -r workspace -f - >/dev/null
+  done
+  kc add-roles -r workspace --uusername service-account-cadastro-importer --cclientid realm-management \
+    --rolename view-users --rolename manage-users >/dev/null
+  # Reconcilia para o conjunto exato: remove da conta de serviço qualquer outra role do realm-management.
+  sa_id="$(kc get "clients/${id}/service-account-user" -r workspace --fields id --format csv --noquotes)"
+  extra_roles="$(kc get "users/${sa_id}/role-mappings/clients/${realm_management_id}" -r workspace --fields name --format csv --noquotes \
+    | grep -vx -e view-users -e manage-users || true)"
+  for role in $extra_roles; do
+    kc remove-roles -r workspace --uusername service-account-cadastro-importer --cclientid realm-management --rolename "$role" >/dev/null
+    log "workspace realm: cadastro-importer: extra role removed from service account: ${role}"
+  done
+  # Audiência da Admin API só quando pedida (scope=kc-admin-api). Fica "roles" (leva o realm-management ao token) e
+  # saem os scopes que trazem nome, e-mail etc. (LGPD).
+  scopes="$(kc get client-scopes -r workspace --fields id,name --format csv --noquotes)"
+  kc update "clients/${id}/optional-client-scopes/$(grep ',kc-admin-api$' <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null
+  for scope_name in basic acr roles; do
+    kc update "clients/${id}/default-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null
+  done
+  for scope_name in profile email web-origins address phone microprofile-jwt organization; do
+    kc delete "clients/${id}/default-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null 2>&1 || true
+    kc delete "clients/${id}/optional-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null 2>&1 || true
+  done
+  log "workspace realm: client cadastro-importer reconciled"
 }
 
 disable_admin_cli_password_grant() {
