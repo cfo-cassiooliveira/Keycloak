@@ -124,6 +124,10 @@ class LegacyLoginIT {
                 .anySatisfy(credential -> assertThat(credential.getType()).isEqualTo("password"));
         assertThat(verifications()).hasSize(1);
         assertThat(verifications().getFirst().body()).contains("ana.souza@gmail.com");
+        String cadastroId = realm.admin().clients().findByClientId("cadastro").getFirst().getId();
+        assertThat(realm.admin().clients().get(cadastroId).clientScopesEvaluate()
+                .generateAccessToken("openid", user.getId(), null).getOtherClaims())
+                .containsEntry("account_origin", "migrated");
         assertThat(awaitGelf("LEGACY_USER_MIGRATED")).contains("\"_user_id\":\"" + user.getId() + "\"",
                 "\"_legacy_user_id\":\"" + legacyId("ana.souza") + "\"", "\"_password_update_required\":false");
     }

@@ -1,6 +1,6 @@
 # Resumo — Spec 001 Keycloak do Workspace
 
-Status da spec: Em revisão. Projeto `keycloak` v0.3.2 (pom). Resumo derivado de spec/plan/tasks, tasks.md e do código.
+Status da spec: Em revisão. Projeto `keycloak` v0.4.0 (pom). Resumo derivado de spec/plan/tasks, tasks.md e do código.
 
 ## Objetivo
 Keycloak 26.8.2 próprio (Art. IV.2), reproduzível com `docker compose`, endurecido, com SPIs: auditoria sem dados pessoais e tema de login PT-BR. Evoluiu para migração sob demanda do Legado, Graylog e client `grafana`.

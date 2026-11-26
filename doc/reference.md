@@ -31,6 +31,11 @@
   `execute-actions-email` com SMTP do realm no Mailpit e `?lifespan=259200` (72 h) passado por chamada; o lifespan do realm fica no padrão (12 h). `user-importer` nunca
   em `default-roles-workspace`; OTP recente é exigido pelo Cadastro (`acr=otp`). Provado pelo smoke (seção "Importação em lote").
   `KC_CADASTRO_IMPORTER_CLIENT_SECRET` só no `.env`.
+- Claim `account_origin` (ADR-0008, importação em lote e migração do Legado): mapper próprio `workspace-account-origin-mapper`
+  (`token/AccountOriginProtocolMapper`), configurado **só** no client `cadastro` (JSON + `ensure_cadastro_client`).
+  `importLineId` → `imported` (tem precedência: o importador também marca o Legado), senão `legacyUserId` → `migrated`,
+  senão sem claim. Os dois atributos precisam continuar `view`/`edit` só `admin` no User Profile e o realm sem
+  `unmanagedAttributePolicy`: o `CadastroRealmIT` prova que o próprio usuário não os altera pela Account API.
 - Client `grafana` (spec 001 do grafana, ADR-0002; `ensure_grafana_client` + `realm-workspace.json`): confidencial, code +
   PKCE S256, sem Direct Grant/implícito, redirect e post-logout exatos, `fullScopeAllowed=false` com escopo só em `admin`,
   `grafana-viewer` e `grafana-editor`; mapper `roles` (realm roles no claim `roles`). `grafana-*` nunca em
@@ -84,6 +89,7 @@
 ```
 src/main/java/com/workspace/keycloak/audit/   Event Listener SPI (mapper puro, AuditSink: console ou Graylog, provider/factory)
 src/main/java/com/workspace/keycloak/audit/gelf/  GELF HTTP para o Graylog, fila assíncrona e fallback em arquivo (ADR-0004)
+src/main/java/com/workspace/keycloak/token/   Protocol Mapper do claim account_origin (ADR-0008)
 src/main/java/com/workspace/keycloak/legacy/  Migração sob demanda do Legado: cliente HTTPS/HMAC, serviço, store, authenticators e listener (ADR-0006)
 src/main/resources/theme/workspace/login/     Tema de login (CSS, logo, mensagens pt_BR/en)
 src/main/resources/META-INF/                  Registro de providers (services) e temas
@@ -115,3 +121,4 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - ADR-0005: CI e cadeia de suprimentos (ações por SHA, ShellCheck, Trivy com exceções que expiram).
 - ADR-0006: migração sob demanda dos usuários do Legado por Authenticator + API do Legado (aceito).
 - ADR-0007: identificador mascarado (`masked_login`) nos eventos de migração, exceção ao ADR-0002 (aceito).
+- ADR-0008: claim `account_origin` no client `cadastro` por Protocol Mapper próprio (aceito).

@@ -412,7 +412,7 @@ ensure_cadastro_client() {
   local scopes scope_name
   scopes="$(kc get client-scopes -r workspace --fields id,name --format csv --noquotes)"
   kc update "clients/${id}/optional-client-scopes/$(grep ',kc-admin-api$' <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null
-  # Minimização (LGPD): tokens só com id, login e roles. Fora os scopes padrão que trazem nome, e-mail etc.
+  # Minimização (LGPD): tokens só com id, login, roles e origem da conta. Fora os scopes padrão que trazem nome, e-mail etc.
   for scope_name in basic acr roles; do
     kc update "clients/${id}/default-client-scopes/$(grep ",${scope_name}\$" <<<"$scopes" | cut -d, -f1)" -r workspace >/dev/null
   done
@@ -424,6 +424,15 @@ ensure_cadastro_client() {
     kc create "clients/${id}/protocol-mappers/models" -r workspace -f - >/dev/null <<'JSON'
 {"name":"login","protocol":"openid-connect","protocolMapper":"oidc-usermodel-property-mapper","config":{"user.attribute":"username","claim.name":"preferred_username","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}}
 JSON
+  fi
+  # Origem da conta (claim account_origin = imported | migrated), só neste client. Deriva de importLineId/legacyUserId,
+  # que o próprio usuário não edita (User Profile); o valor dos atributos nunca vai para o token.
+  if ! kc get "clients/${id}/protocol-mappers/models" -r workspace --fields name --format csv --noquotes \
+    | grep -qx account-origin; then
+    kc create "clients/${id}/protocol-mappers/models" -r workspace -f - >/dev/null <<'JSON'
+{"name":"account-origin","protocol":"openid-connect","protocolMapper":"workspace-account-origin-mapper","config":{"claim.name":"account_origin","id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true","introspection.token.claim":"true"}}
+JSON
+    log "workspace realm: cadastro: mapper created: account-origin"
   fi
   log "workspace realm: client cadastro reconciled"
 }
