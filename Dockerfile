@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests
 
 # 2) Copia o JAR para providers/ e aplica as opções de build (kc.sh build).
 #    Cria data/log (dono: keycloak) para o volume do fallback de auditoria nascer gravável.
-FROM quay.io/keycloak/keycloak:26.8.2@sha256:723b1d6e254c0fc96d5cffec860c7e0744d6a3277822b865bb538cf891575e41 AS builder
+FROM quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3 AS builder
 ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true \
     KC_METRICS_ENABLED=true \
@@ -20,7 +20,7 @@ RUN /opt/keycloak/bin/kc.sh build \
     && mkdir -p /opt/keycloak/data/log
 
 # 3) Imagem final já otimizada: o start não recompila (start --optimized).
-FROM quay.io/keycloak/keycloak:26.8.2@sha256:723b1d6e254c0fc96d5cffec860c7e0744d6a3277822b865bb538cf891575e41
+FROM quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
 # A imagem oficial já roda como 1000; declarado aqui para não depender do herdado (Trivy DS002).
 USER 1000

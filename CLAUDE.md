@@ -56,6 +56,10 @@ docker compose run --rm --no-deps provisioner  # reaplica o provisionamento do m
 - Mudou recurso do tema (CSS/JS/imagem)? Incremente a versão do `pom.xml` (cache-busting `?v=`, ADR-0003).
 - **Regras detalhadas** (exceção `masked_login`/ADR-0007, contrato com o Cadastro C03, client `grafana`, fluxos `workspace-browser`/reset, `ensure_flow`, migração do Legado, listeners do realm): [doc/reference.md](doc/reference.md#regras-detalhadas). Leia antes de mexer nessas áreas.
 
+## Importação em lote
+
+Client `cadastro-importer` (só service account; `view-users` + `manage-users`; nunca realm role nem `manage-realm`/`manage-clients`), role `user-importer` (nunca padrão) e atributo `importLineId` (só admin/serviço edita) consumidos pelo `../cadastro` (spec 002 do rabbitmq). Usuário importado nasce **sem senha**, com `UPDATE_PASSWORD`; e-mail de ativação vale 72 h só com `?lifespan=259200` na chamada (lifespan do realm fica no padrão). Segredo `KC_CADASTRO_IMPORTER_CLIENT_SECRET` só no `.env`. Regras e prova: [doc/reference.md](doc/reference.md#regras-detalhadas), seção "Importação em lote" do smoke.
+
 ## Mais
 
 - Índice de docs, specs e ADRs: [doc/INDEX.md](doc/INDEX.md). Glossário, estrutura e decisões: [doc/reference.md](doc/reference.md).

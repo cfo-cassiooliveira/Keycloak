@@ -25,6 +25,12 @@
   `loa-max-age=0`), e o `auth_time` vira a hora do step-up. Login comum termina com `acr=password`, mesmo com OTP; o
   reset de senha também, mesmo com `acr_values=otp`. O refresh de token do step-up mantém `acr=otp` e o `auth_time` do
   step-up pela sessão do client (até 10 h): daí o limite de `auth_time` (`LogInvestigatorOtpBypassIT`).
+- Client `cadastro-importer` + role `user-importer` (spec 002 do rabbitmq, K0; `ensure_cadastro_importer_client` + `realm-management`
+  no JSON): só conta de serviço, `view-users`/`manage-users`, scope `kc-admin-api` opcional, sem realm role no escopo; cria usuário
+  sem senha (`UPDATE_PASSWORD` + atributo `importLineId`, editável só por admin/serviço). E-mail de ativação por
+  `execute-actions-email` com SMTP do realm no Mailpit e `?lifespan=259200` (72 h) passado por chamada; o lifespan do realm fica no padrão (12 h). `user-importer` nunca
+  em `default-roles-workspace`; OTP recente é exigido pelo Cadastro (`acr=otp`). Provado pelo smoke (seção "Importação em lote").
+  `KC_CADASTRO_IMPORTER_CLIENT_SECRET` só no `.env`.
 - Client `grafana` (spec 001 do grafana, ADR-0002; `ensure_grafana_client` + `realm-workspace.json`): confidencial, code +
   PKCE S256, sem Direct Grant/implícito, redirect e post-logout exatos, `fullScopeAllowed=false` com escopo só em `admin`,
   `grafana-viewer` e `grafana-editor`; mapper `roles` (realm roles no claim `roles`). `grafana-*` nunca em
@@ -68,6 +74,7 @@
 | Listener de auditoria | `workspace-audit` | Event Listener SPI que escreve na categoria `workspace.audit` |
 | Tema do Workspace | `workspace` | Tema de login em Bootstrap 5 que herda os templates do `base` (ADR-0003) |
 | Investigador de logs | `log-investigator` | Realm role que o Cadastro exige para gerar consultas por token no Graylog (spec 001 do graylog) |
+| Importador de usuários | `user-importer` / `cadastro-importer` | Realm role do admin que envia o CSV no Cadastro (OTP recente) / client de serviço que cria usuários sem senha na importação em lote (spec 002 do rabbitmq) |
 | Fluxo de login | `workspace-browser` | Fluxo do navegador: login com migração do Legado (`legacy-username-password-form`), step-up por LoA (`acr` `password`/`otp`) e OTP obrigatório para `log-investigator` e `admin` |
 | Fluxo de reset | `workspace-reset-credentials` | Reset de senha por e-mail com `legacy-reset-choose-user` (cria sem senha o usuário que só existe no Legado, T16); OTP obrigatório para `log-investigator` e `admin` |
 | Listener de conclusão | `legacy-migration-completion` | Marca o usuário no Legado quando a senha é definida por reset ou atualização (T17); a migração no login marca por conta própria, logo após a transação interna confirmada (RN-07, independe de o login concluir); só `https://` com `ca-file` e TLS 1.3, sem opção para liberar http; config `KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__*` (inerte sem ela) |

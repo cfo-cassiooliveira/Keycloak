@@ -63,6 +63,22 @@ exato `http://localhost:4300/bff/signin-oidc`, sem password grant). A conta de s
 (`provisioning/workspace-user-profile.json`, editáveis só por admin). O segredo `KC_CADASTRO_CLIENT_SECRET` é gerado
 pelo `generate-env.sh` e aplicado pelo provisioner; o mesmo valor vai para o `.env` do cadastro.
 
+**Importação em lote** ([spec 002 do rabbitmq](../rabbitmq/docs/specs/002-uso-pelos-projetos/spec.md), ADR-0006 de lá): o
+realm entrega o client confidencial `cadastro-importer`, só com conta de serviço (client credentials; sem Authorization
+Code, implícito nem password grant; `fullScopeAllowed=false`, nenhuma realm role no escopo). A conta de serviço tem só
+`view-users` e `manage-users` do `realm-management` (nada de `manage-realm` ou `manage-clients`) e precisa pedir
+`scope=kc-admin-api`. O consumidor do Cadastro cria o usuário **sem senha**, com a ação `UPDATE_PASSWORD` e o atributo
+`importLineId`, e dispara o e-mail de ativação (`PUT /users/{id}/execute-actions-email?lifespan=259200`, `["UPDATE_PASSWORD"]`). O link
+vale **72 h** só porque a chamada passa `?lifespan=259200` (o `actionTokenGeneratedByAdminLifespan` do realm fica no padrão, 12 h;
+sem o parâmetro o e-mail NÃO vale 72 h) e o SMTP do realm aponta para o Mailpit
+(http://127.0.0.1:8025). `importLineId` está no User Profile (`permissions`: ver e editar só `admin`, isto é, Admin API e
+conta de serviço; o próprio usuário não vê nem edita). O segredo `KC_CADASTRO_IMPORTER_CLIENT_SECRET` é gerado pelo
+`generate-env.sh`, aplicado pelo provisioner e copiado para o `.env` do cadastro; nunca é versionado. A realm role
+`user-importer` (nunca padrão; só por atribuição nominal) é do admin que envia o arquivo no Cadastro; o client `cadastro`
+a tem no escopo (chega em `realm_access.roles`) e o Cadastro exige `acr=otp` e `auth_time` recente, igual à
+`log-investigator` (step-up já existente). Limite conhecido: `manage-users` permite, em tese, mapear roles em usuários;
+o Keycloak não tem escopo mais estreito para criar usuários, então o Cadastro só chama a criação e o e-mail de ativação.
+
 **Investigação em logs** ([spec 001 do graylog](../graylog/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
 `log-investigator` libera, no Cadastro (policy `logs:investigate`), a geração de consultas por token no Graylog. Ela
 nunca é padrão: atribua só a pessoas nomeadas (Admin Console → realm `workspace` → Users → Role mapping). O login
@@ -148,7 +164,7 @@ docker compose -f docker-compose.yml -f docker-compose.identity.yml [-f docker-c
 
 # 4) Keycloak: segredos próprios e a chave do Legado (copiada sem exibir o valor)
 cd ../keycloak && ./scripts/generate-env.sh
-grep -q '^KC_LEGADO_SIGNING_KEY=.' .env || echo "KC_LEGADO_SIGNING_KEY=$(grep -m1 '^LEGADO_INTERNAL_KEYCLOAK_KEY=' ../legado/.env | cut -d= -f2- | tr -d '\r')" >> .env
+grep -q '^KC_LEGADO_SIGNING_KEY=.' .env || echo "KC_LEGADO_SIGNING_KEY=$(grep -m1 '^LEGADO_INTERNAL_KEYCLOAK_KEY=' ../legado-cadastro-usuarios/.env | cut -d= -f2- | tr -d '\r')" >> .env
 docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # sem o Graylog: só docker-compose.yml
 
 # 5) Cadastro (README do cadastro): ./scripts/generate-env.sh e docker compose up -d --build  ->  http://localhost:4300
@@ -159,7 +175,7 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
   (`KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__*`, `KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__*` e
   `KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__*`, cada uma com `BASE_URL`, `TIMEOUT_MS`, `KEY_ID`,
   `SIGNING_KEY` e `CA_FILE`). Sem a chave, o formulário de login age como o padrão e ninguém é migrado.
-- A CA pública do Legado (`../legado/secrets/internal/ca.crt`) é montada em `/opt/keycloak/conf/legado-ca.pem`: rode o
+- A CA pública do Legado (`../legado-cadastro-usuarios/secrets/internal/ca.crt`) é montada em `/opt/keycloak/conf/legado-ca.pem`: rode o
   `internal-credentials.sh` do Legado **antes** de subir o Keycloak (sem o arquivo, o Docker cria um diretório no lugar).
 - Troque o `.env` ou a CA? Recrie o container (`up -d`), pois as variáveis só são lidas na subida.
 - **Nunca rode dois provisioners ou smokes ao mesmo tempo** (nem `docker compose run provisioner` durante o `up`):

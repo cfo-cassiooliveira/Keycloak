@@ -114,6 +114,16 @@
       },
       "permissions": { "view": ["admin"], "edit": ["admin"] },
       "multivalued": false
+    },
+    {
+      "name": "importLineId",
+      "displayName": "${importLineId}",
+      "validations": {
+        "length": { "max": 64 },
+        "pattern": { "pattern": "^[0-9A-Za-z-]+$", "error-message": "invalidImportLineId" }
+      },
+      "permissions": { "view": ["admin"], "edit": ["admin"] },
+      "multivalued": false
     }
   ],
   "groups": [

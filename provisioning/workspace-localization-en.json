@@ -16,5 +16,7 @@
   "invalidPostalCode": "Enter the postal code with 8 digits.",
   "invalidCityIbgeCode": "Enter the 7-digit IBGE code.",
   "invalidState": "Enter the 2-letter state code in uppercase.",
+  "importLineId": "Import line id",
+  "invalidImportLineId": "Invalid import line id.",
   "invalidLegacyUserId": "Invalid legacy id."
 }
