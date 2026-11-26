@@ -370,7 +370,31 @@ check "importer é negado fora do escopo (clients, fluxos, roles: 403; realm sem
     && "$(admin_api GET /roles/smoke-denied >/dev/null 2>&1 && echo EXISTS || echo none)" == none ]] && echo true || echo false)"
 check "importLineId só é visível e editável por admin/serviço (não editável pelo próprio usuário)" \
   "$([[ "$(grep -o '"name":"importLineId".*' <<<"$(admin_api GET /users/profile || true)" | grep -o '"permissions":{[^}]*}' | head -1)" == '"permissions":{"view":["admin"],"edit":["admin"]}' ]] && echo true || echo false)"
+# Origem da conta (claim account_origin): token de exemplo do client cadastro, sem login do usuário.
+imported_token="$(admin_api GET "/clients/${cadastro_client_id}/evaluate-scopes/generate-example-access-token?userId=${import_user_id}&scope=openid" || true)"
+check "token do cadastro de conta importada traz account_origin=imported e não o importLineId" \
+  "$([[ "$(contains "$imported_token" '"account_origin":"imported"')" == true \
+    && "$(contains "$imported_token" "$import_line_id")" == false ]] && echo true || echo false)"
 admin_api DELETE "/users/${import_user_id}" >/dev/null || true
+# Realm já existente: o import não o altera, então só o provisioner cria o mapper. Apaga e confere que ele volta
+# (em ambiente novo o mapper vem do JSON e esse caminho nunca rodaria).
+origin_mapper() {
+  admin_api GET "/clients/${cadastro_client_id}/protocol-mappers/models" | sed 's/},{/}\n{/g' \
+    | grep '"name":"account-origin"' || true
+}
+origin_mapper_id="$(origin_mapper | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+admin_api DELETE "/clients/${cadastro_client_id}/protocol-mappers/models/${origin_mapper_id}" >/dev/null || true
+check "mapper account-origin apagado para provar a recriação" \
+  "$([[ -n "$origin_mapper_id" && -z "$(origin_mapper)" ]] && echo true || echo false)"
+check "provisioner roda em realm sem o mapper account-origin" "$(run_provisioner && echo true || echo false)"
+restored_mapper="$(origin_mapper)"
+check "provisioner recria o mapper account-origin com a configuração esperada" \
+  "$([[ "$(contains "$restored_mapper" '"protocolMapper":"workspace-account-origin-mapper"')" == true \
+    && "$(contains "$restored_mapper" '"claim.name":"account_origin"')" == true \
+    && "$(contains "$restored_mapper" '"id.token.claim":"true"')" == true \
+    && "$(contains "$restored_mapper" '"access.token.claim":"true"')" == true \
+    && "$(contains "$restored_mapper" '"userinfo.token.claim":"true"')" == true \
+    && "$(contains "$restored_mapper" '"introspection.token.claim":"true"')" == true ]] && echo true || echo false)"
 
 echo "== Grafana (spec 001 do grafana, T04)"
 grafana_json="$(admin_api GET "/clients?clientId=grafana" || true)"

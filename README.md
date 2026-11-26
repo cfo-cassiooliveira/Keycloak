@@ -79,6 +79,15 @@ a tem no escopo (chega em `realm_access.roles`) e o Cadastro exige `acr=otp` e `
 `log-investigator` (step-up já existente). Limite conhecido: `manage-users` permite, em tese, mapear roles em usuários;
 o Keycloak não tem escopo mais estreito para criar usuários, então o Cadastro só chama a criação e o e-mail de ativação.
 
+**Origem da conta** ([ADR-0008](doc/adr/0008-claim-origem-da-conta.md)): só os tokens do client `cadastro` (ID, access,
+userinfo e introspecção) levam o claim `account_origin`: `imported` (conta criada pela importação em lote, atributo
+`importLineId`) ou `migrated` (veio do Legado pela migração sob demanda, atributo `legacyUserId`). Conta sem nenhum dos
+dois não recebe o claim. Vai apenas a origem, nunca o valor do atributo. Os dois atributos são visíveis e editáveis só
+por administrador ou serviço, então o usuário não escolhe a própria origem. Em ambiente já criado, recrie a imagem e
+rode o provisioner (`docker compose up -d --build`): o mapper depende da extensão nova. O Keycloak só responde a
+introspecção de quem está na audiência do token, e o `cadastro` não está na `aud` dos próprios tokens: hoje ele lê o
+claim no ID token, no access token ou no userinfo.
+
 **Investigação em logs** ([spec 001 do graylog](../graylog/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
 `log-investigator` libera, no Cadastro (policy `logs:investigate`), a geração de consultas por token no Graylog. Ela
 nunca é padrão: atribua só a pessoas nomeadas (Admin Console → realm `workspace` → Users → Role mapping). O login

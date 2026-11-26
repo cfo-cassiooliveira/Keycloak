@@ -116,6 +116,18 @@
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
           }
+        },
+        {
+          "name": "account-origin",
+          "protocol": "openid-connect",
+          "protocolMapper": "workspace-account-origin-mapper",
+          "config": {
+            "claim.name": "account_origin",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
         }
       ],
       "optionalClientScopes": ["kc-admin-api"],
