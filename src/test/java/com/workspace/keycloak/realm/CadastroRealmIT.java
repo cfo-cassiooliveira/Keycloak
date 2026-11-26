@@ -86,7 +86,7 @@ class CadastroRealmIT {
     void cadastroToken_WhenUserIsLogInvestigator_CarriesTheRoleAndNoPersonalData() {
         assertThat(realm.admin().clients().get(cadastroClient().getId()).getScopeMappings().realmLevel().listAll())
                 .extracting(RoleRepresentation::getName)
-                .containsExactlyInAnyOrder("admin", "user", "log-investigator");
+                .containsExactlyInAnyOrder("admin", "user", "log-investigator", "user-importer");
         UserRepresentation user = UserBuilder.create("token.investigator")
                 .email("token.investigator@example.com").name("Token", "Investigator").enabled(true).build();
         String userId;
