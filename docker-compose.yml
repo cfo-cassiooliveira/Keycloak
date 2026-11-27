@@ -24,7 +24,7 @@ services:
 
   keycloak:
     build: .
-    image: workspace-keycloak:0.4.0
+    image: workspace-keycloak:0.4.1
     # Teto de memória: um serviço não derruba os demais na VM do WSL2 (20 GB, ver ~/.wslconfig).
     mem_limit: 1536m
     # --import-realm ignora realms que já existem no banco: reiniciar não sobrescreve configuração feita depois.
@@ -43,6 +43,9 @@ services:
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_ENABLED: "true"
       KC_LOG_CONSOLE_OUTPUT: json
+      # "Detect existing broker user" grava o e-mail em ERROR quando não há conta para o login com Google (LGPD);
+      # a negativa continua auditada pelo workspace-audit, sem dado pessoal.
+      KC_LOG_LEVEL: "info,org.keycloak.authentication.authenticators.broker.IdpDetectExistingBrokerUserAuthenticator:off"
       # O listener padrão jboss-logging grava username e IP; em "trace" ele nunca aparece no log (LGPD), nem em
       # realms criados no futuro. A auditoria fica com o workspace-audit (provisioner configura o master).
       KC_SPI_EVENTS_LISTENER__JBOSS_LOGGING__SUCCESS_LEVEL: trace
@@ -117,7 +120,7 @@ services:
   # Provisionamento idempotente do realm master (auditoria, força bruta, client de serviço, sem password grant).
   # Roda a cada "docker compose up"; para reaplicar: docker compose run --rm provisioner
   provisioner:
-    image: workspace-keycloak:0.4.0
+    image: workspace-keycloak:0.4.1
     entrypoint: ["bash", "/provisioning/provision.sh"]
     environment:
       KC_URL: http://keycloak:8080
@@ -127,6 +130,9 @@ services:
       KC_CADASTRO_CLIENT_SECRET: ${KC_CADASTRO_CLIENT_SECRET:?KC_CADASTRO_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_GRAFANA_CLIENT_SECRET: ${KC_GRAFANA_CLIENT_SECRET:?KC_GRAFANA_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
       KC_CADASTRO_IMPORTER_CLIENT_SECRET: ${KC_CADASTRO_IMPORTER_CLIENT_SECRET:?KC_CADASTRO_IMPORTER_CLIENT_SECRET ausente. Rode ./scripts/generate-env.sh}
+      # Login social com Google (ADR-0009): opcional; sem as duas, o provedor não é criado.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     volumes:
       - ./provisioning:/provisioning:ro
     depends_on:

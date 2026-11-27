@@ -7,7 +7,9 @@
 #   - admin-cli do master sem password grant (fluxo proibido pelo security.md); admins usam o Admin Console;
 #   - reconcilia no realm workspace as configurações de auditoria/LGPD, reset de senha, SMTP, roles, fluxo de login
 #     "workspace-browser" (OTP das roles log-investigator e admin), User Profile, textos traduzidos e o client "cadastro"
-#     (o --import-realm não altera realm existente).
+#     (o --import-realm não altera realm existente);
+#   - login social só com Google (ADR-0009): fluxos de primeiro login e pós-broker sempre; o provedor "google" é
+#     criado só com GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET; vínculo de conta pela própria sessão (idp_link) desligado.
 # Roda a cada "docker compose up" (serviço provisioner). Segredos chegam por variáveis de ambiente, nunca por argumento.
 set -euo pipefail
 
@@ -109,6 +111,8 @@ reconcile_workspace_realm() {
   ensure_cadastro_client
   ensure_grafana_client
   ensure_cadastro_importer_client
+  disable_session_account_linking
+  ensure_google_login
 }
 
 # Roles do Cadastro (spec 001): "user" entra como role padrão de todo usuário novo.
@@ -213,8 +217,41 @@ drop_staging_suffix() {
   kc get "$1" -r workspace | sed 's/\("alias" *: *"[^"]*\)-staging"/\1"/' | kc update "$1" -r workspace -f - >/dev/null
 }
 
-# Garante o fluxo $1 com a estrutura da função construtora $2, ligado ao atributo $3 do realm; $4 imprime a assinatura
-# esperada. Também reconcilia fluxo alterado à mão no Admin Console. Nunca liga fluxo pela metade: constrói em
+idp_exists() {
+  kc get identity-provider/instances/google -r workspace --fields alias >/dev/null 2>&1
+}
+
+# Um "binding" é um atributo do realm ou, com o prefixo "idp:", um campo do provedor google. Sem o provedor, os fluxos
+# existem, mas não há o que ligar (ensure_google_identity_provider os liga quando o cria).
+bound_flow() {
+  if [[ "$1" != idp:* ]]; then
+    kc get realms/workspace --fields "$1" --format csv --noquotes
+  elif idp_exists; then
+    kc get identity-provider/instances/google -r workspace --fields "${1#idp:}" --format csv --noquotes
+  fi
+}
+
+bind_flow() {
+  if [[ "$1" != idp:* ]]; then
+    kc update realms/workspace -s "$1=$2" >/dev/null
+  elif idp_exists; then
+    kc update identity-provider/instances/google -r workspace -s "${1#idp:}=$2" >/dev/null
+  fi
+}
+
+# Solta um fluxo sem versão anterior. No provedor não há padrão seguro para onde voltar (o "first broker login" do
+# Keycloak cria conta e "sem pós-broker" dispensa o OTP): o provedor é desligado antes.
+release_flow() {
+  if [[ "$1" != idp:* ]]; then
+    bind_flow "$1" "$2"
+  else
+    kc update identity-provider/instances/google -r workspace -s enabled=false -s "${1#idp:}=" >/dev/null
+    log "workspace realm: google identity provider disabled while its flow is rebuilt"
+  fi
+}
+
+# Garante o fluxo $1 com a estrutura da função construtora $2, ligado ao binding $3 (ver bound_flow); $4 imprime a
+# assinatura esperada. Também reconcilia fluxo alterado à mão no Admin Console. Nunca liga fluxo pela metade: constrói em
 # "<alias>-staging" com subfluxos e configs também com "-staging" (não colidem com os do fluxo em uso), compara a
 # assinatura e só então liga o staging, apaga a versão anterior (o delete leva subfluxos e configs) e tira o sufixo de
 # tudo. Staging largado por execução interrompida é apagado. Mudança de estrutura: nova versão nos nomes (-v1- → -v2-).
@@ -223,16 +260,19 @@ ensure_flow() {
   expected="$("$4")"
   id="$(top_flow_id "$alias")"
   if [[ -n "$id" && "$(flow_signature "$alias")" == "$expected" ]]; then
-    kc update realms/workspace -s "${binding}=${alias}" >/dev/null
+    bind_flow "$binding" "$alias"
     return 0
   fi
   id="$(top_flow_id "$staging")"
   if [[ -n "$id" ]]; then
     # Staging largado (execução interrompida ou alterado à mão) pode estar ligado ao realm: religa ao fluxo anterior ou
     # ao padrão do Keycloak ANTES de apagar, senão o delete falha ("currently in use") e o realm fica sem fluxo válido.
-    if [[ "$(kc get realms/workspace --fields "$binding" --format csv --noquotes)" == "$staging" ]]; then
-      if [[ -n "$(top_flow_id "$alias")" ]]; then fallback="$alias"; fi
-      kc update realms/workspace -s "${binding}=${fallback}" >/dev/null
+    if [[ "$(bound_flow "$binding")" == "$staging" ]]; then
+      if [[ -n "$(top_flow_id "$alias")" ]]; then
+        bind_flow "$binding" "$alias"
+      else
+        release_flow "$binding" "$fallback"
+      fi
     fi
     kc delete "authentication/flows/${id}" -r workspace >/dev/null
     log "workspace realm: leftover flow removed: ${staging}"
@@ -243,7 +283,7 @@ ensure_flow() {
     flow_signature "$staging" >&2
     exit 1
   fi
-  kc update realms/workspace -s "${binding}=${staging}" >/dev/null
+  bind_flow "$binding" "$staging"
   id="$(top_flow_id "$alias")"
   if [[ -n "$id" ]]; then
     kc delete "authentication/flows/${id}" -r workspace >/dev/null
@@ -258,8 +298,8 @@ ensure_flow() {
     echo "Flow ${alias} does not match the expected structure after promotion" >&2
     exit 1
   fi
-  kc update realms/workspace -s "${binding}=${alias}" >/dev/null
-  log "workspace realm: flow ${alias} built and bound to ${binding}"
+  bind_flow "$binding" "$alias"
+  log "workspace realm: flow ${alias} built (binding ${binding})"
 }
 
 # Login do navegador, igual ao realm-workspace.json: step-up por nível de autenticação (LoA 1 = senha, acr "password";
@@ -377,6 +417,129 @@ ensure_workspace_auth_flows() {
   kc update realms/workspace -f - >/dev/null <<<'{"attributes":{"acr.loa.map":"{\"password\":1,\"otp\":2}"}}'
   ensure_flow workspace-browser build_browser_flow browserFlow expected_browser_flow browser
   ensure_flow workspace-reset-credentials build_reset_credentials_flow resetCredentialsFlow expected_reset_credentials_flow "reset credentials"
+}
+
+# Primeiro login com o Google (ADR-0009): só vincula a uma conta que já existe e só depois da senha dessa conta. Nunca
+# cria usuário (sem idp-create-user-if-unique) nem vincula sozinho por e-mail (sem idp-auto-link).
+build_first_broker_login_flow() {
+  local top="$1"
+  kc create authentication/flows -r workspace -f - >/dev/null \
+    <<<"{\"alias\":\"${top}\",\"description\":\"Primeiro login com provedor externo: só conta existente, vinculada após a senha dela.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
+  add_flow_execution "$top" idp-detect-existing-broker-user REQUIRED 10
+  add_flow_execution "$top" idp-username-password-form REQUIRED 20
+}
+
+expected_first_broker_login_flow() {
+  cat <<'SIGNATURE'
+0,0,10,Detect existing broker user,idp-detect-existing-broker-user,REQUIRED,
+0,1,20,Username Password Form for identity provider reauthentication,idp-username-password-form,REQUIRED,
+SIGNATURE
+}
+
+# Depois de todo login com o Google: OTP para as roles privilegiadas (sem OTP
+# cadastrado, configura antes de concluir) e para quem já o configurou. Sem condição de LoA: nunca produz acr=otp.
+build_post_broker_login_flow() {
+  local top="$1" s="$2" role subflow priority=10
+  kc create authentication/flows -r workspace -f - >/dev/null \
+    <<<"{\"alias\":\"${top}\",\"description\":\"Pós-login com provedor externo: OTP para roles privilegiadas e para quem já o configurou.\",\"providerId\":\"basic-flow\",\"topLevel\":true,\"builtIn\":false}"
+  for role in admin log-investigator user-importer; do
+    subflow="workspace-broker-v1-otp-by-${role}${s}"
+    add_subflow "$top" "$subflow" "OTP obrigatório para ${role}." CONDITIONAL "$priority"
+    add_flow_execution "$subflow" conditional-user-role REQUIRED 10 \
+      "workspace-broker-v1-role-${role}${s}" "{\"condUserRole\":\"${role}\",\"negate\":\"false\"}"
+    add_flow_execution "$subflow" conditional-credential REQUIRED 20 \
+      "workspace-broker-v1-otp-not-used-by-${role}${s}" '{"credentials":"otp","included":"false"}'
+    add_flow_execution "$subflow" auth-otp-form REQUIRED 30
+    priority=$((priority + 10))
+  done
+  subflow="workspace-broker-v1-otp-configured${s}"
+  add_subflow "$top" "$subflow" "OTP para quem já o configurou." CONDITIONAL "$priority"
+  add_flow_execution "$subflow" conditional-user-configured REQUIRED 10
+  add_flow_execution "$subflow" conditional-credential REQUIRED 20 \
+    "workspace-broker-v1-otp-not-used-configured${s}" '{"credentials":"otp","included":"false"}'
+  add_flow_execution "$subflow" auth-otp-form REQUIRED 30
+  # Sem este passo, quem não cai em nenhum subflow condicional é negado: o fluxo não teria execução bem-sucedida.
+  add_flow_execution "$top" allow-access-authenticator REQUIRED 50
+}
+
+expected_post_broker_login_flow() {
+  local role index=0
+  for role in admin log-investigator user-importer; do
+    cat <<SIGNATURE
+0,${index},$((index * 10 + 10)),workspace-broker-v1-otp-by-${role},,CONDITIONAL,
+1,0,10,Condition - user role,conditional-user-role,REQUIRED,{"alias":"workspace-broker-v1-role-${role}","config":{"condUserRole":"${role}","negate":"false"}}
+1,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-broker-v1-otp-not-used-by-${role}","config":{"credentials":"otp","included":"false"}}
+1,2,30,OTP Form,auth-otp-form,REQUIRED,
+SIGNATURE
+    index=$((index + 1))
+  done
+  cat <<'SIGNATURE'
+0,3,40,workspace-broker-v1-otp-configured,,CONDITIONAL,
+1,0,10,Condition - user configured,conditional-user-configured,REQUIRED,
+1,1,20,Condition - credential,conditional-credential,REQUIRED,{"alias":"workspace-broker-v1-otp-not-used-configured","config":{"credentials":"otp","included":"false"}}
+1,2,30,OTP Form,auth-otp-form,REQUIRED,
+0,4,50,Allow access,allow-access-authenticator,REQUIRED,
+SIGNATURE
+}
+
+# O kc_action=idp_link vincula um provedor externo só com a sessão aberta, sem pedir a senha (ADR-0009): desligado.
+# O vínculo só nasce no primeiro login pelo provedor, que exige a senha da conta.
+disable_session_account_linking() {
+  if kc get authentication/required-actions/idp_link -r workspace >/dev/null 2>&1; then
+    kc update authentication/required-actions/idp_link -r workspace -s enabled=false >/dev/null
+    log "workspace realm: required action idp_link disabled"
+  fi
+}
+
+# Provedor google a partir de workspace-google-idp.json, sem mappers (nada do Google altera atributos da conta). Sem as
+# credenciais (CI), ele não é criado; se já existe, é reconciliado mantendo client id e segredo gravados. $1 é o estado
+# "enabled" anterior: um provedor desligado pelo administrador continua desligado. Os segredos vão pela entrada padrão e
+# nunca para o log.
+ensure_google_identity_provider() {
+  local enabled="${1:-true}" client_id="${GOOGLE_CLIENT_ID:-}" client_secret="${GOOGLE_CLIENT_SECRET:-}"
+  local body mapper_id credential_pattern='^[A-Za-z0-9._-]+$'
+  if [[ -z "$client_id" || -z "$client_secret" ]]; then
+    if ! idp_exists; then
+      log "workspace realm: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set; google identity provider not provisioned"
+      return 0
+    fi
+    client_id="$(kc get identity-provider/instances/google -r workspace \
+      | sed -n 's/.*"clientId" *: *"\([^"]*\)".*/\1/p')"
+    # Valor mascarado: o Keycloak mantém o segredo que já está gravado.
+    client_secret='**********'
+    log "workspace realm: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set; keeping the stored google credentials"
+  elif [[ ! "$client_id" =~ $credential_pattern || ! "$client_secret" =~ $credential_pattern ]]; then
+    echo "GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET has unexpected characters (check quotes and spaces)" >&2
+    exit 1
+  fi
+  body="$(<"${PROVISIONING_DIR}/workspace-google-idp.json")"
+  body="${body//__GOOGLE_CLIENT_ID__/"$client_id"}"
+  body="${body//__GOOGLE_CLIENT_SECRET__/"$client_secret"}"
+  body="${body/'"enabled": true'/"\"enabled\": ${enabled}"}"
+  if idp_exists; then
+    kc update identity-provider/instances/google -r workspace -f - >/dev/null <<<"$body"
+  else
+    kc create identity-provider/instances -r workspace -f - >/dev/null <<<"$body"
+    log "workspace realm: google identity provider created"
+  fi
+  for mapper_id in $(kc get identity-provider/instances/google/mappers -r workspace --fields id --format csv --noquotes); do
+    kc delete "identity-provider/instances/google/mappers/${mapper_id}" -r workspace >/dev/null
+    log "workspace realm: google identity provider: mapper removed"
+  done
+  log "workspace realm: google identity provider reconciled (enabled=${enabled})"
+}
+
+ensure_google_login() {
+  local enabled=""
+  # Lido antes dos fluxos: a reconstrução pode desligar o provedor por um instante.
+  if idp_exists; then
+    enabled="$(kc get identity-provider/instances/google -r workspace --fields enabled --format csv --noquotes)"
+  fi
+  ensure_flow workspace-first-broker-login build_first_broker_login_flow idp:firstBrokerLoginFlowAlias \
+    expected_first_broker_login_flow ""
+  ensure_flow workspace-post-broker-login build_post_broker_login_flow idp:postBrokerLoginFlowAlias \
+    expected_post_broker_login_flow ""
+  ensure_google_identity_provider "$enabled"
 }
 
 workspace_client_id() {

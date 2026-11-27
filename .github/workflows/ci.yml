@@ -82,7 +82,7 @@ jobs:
   image:
     name: imagem + smoke test + E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: [java, theme-unit]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -92,12 +92,24 @@ jobs:
       - run: docker compose up -d --build --wait keycloak
       - name: Provisionamento do realm master
         run: docker compose run --rm --no-deps provisioner
+      # Sem GOOGLE_*: o provedor não existe, não há botão e o vínculo pela sessão continua desligado.
+      - name: Login com Google sem credenciais
+        run: bash ./scripts/smoke-google.sh
+      # Credenciais fictícias (o Google nunca é chamado): exercitam a criação do provedor; o smoke abaixo, a atualização.
+      - name: Provisionamento com credenciais fictícias do Google
+        env:
+          GOOGLE_CLIENT_ID: ci-fake.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: fake-fake-fake
+        run: docker compose run --rm --no-deps provisioner
       - name: Trivy na imagem (HIGH/CRITICAL com correção; exceções com prazo no .trivyignore.yaml)
         run: >-
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" "$TRIVY_IMAGE" image
           --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --ignorefile /src/.trivyignore.yaml
           --exit-code 1 workspace-keycloak:$(sed -n 's#.*image: workspace-keycloak:\(.*\)#\1#p' docker-compose.yml | head -1)
       - run: ./scripts/smoke-test.sh
+        env:
+          GOOGLE_CLIENT_ID: ci-fake.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: fake-fake-fake
       - run: ./scripts/e2e.sh
       - name: Logs do Keycloak em caso de falha
         if: failure()

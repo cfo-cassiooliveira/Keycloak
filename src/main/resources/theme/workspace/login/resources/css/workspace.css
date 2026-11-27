@@ -211,6 +211,21 @@
   min-width: 3.25rem;
 }
 
+/* Botão de provedor externo: texto escuro e altura do botão principal, para não parecer desabilitado. */
+#kc-social-providers .btn {
+  --bs-btn-color: var(--ws-graphite);
+  --bs-btn-border-color: var(--ws-field-border);
+  --bs-btn-hover-color: var(--ws-graphite);
+  --bs-btn-hover-bg: var(--bs-tertiary-bg);
+  --bs-btn-hover-border-color: var(--ws-periwinkle-dark);
+  --bs-btn-active-color: var(--ws-graphite);
+  --bs-btn-active-bg: var(--bs-secondary-bg);
+  --bs-btn-active-border-color: var(--ws-periwinkle-dark);
+  --bs-btn-focus-shadow-rgb: 127, 136, 239;
+  min-height: 3.125rem;
+  font-weight: 600;
+}
+
 .ws-divider {
   display: flex;
   align-items: center;
