@@ -157,7 +157,9 @@ investigation_state() {
     "/clients/${cadastro_id}/scope-mappings/realm" /authentication/flows/workspace-browser/executions \
     /authentication/flows/workspace-reset-credentials/executions \
     /roles/grafana-viewer /roles/grafana-editor "/clients/${grafana_id}/scope-mappings/realm" \
-    "/clients/${grafana_id}/protocol-mappers/models" "/clients/${grafana_id}/default-client-scopes"; do
+    "/clients/${grafana_id}/protocol-mappers/models" "/clients/${grafana_id}/default-client-scopes" \
+    /authentication/flows/workspace-first-broker-login/executions \
+    /authentication/flows/workspace-post-broker-login/executions /identity-provider/instances; do
     echo "${path}: $(admin_api GET "$path" || echo MISSING)"
   done
   admin_api GET "" | grep -o '"browserFlow":"[^"]*"\|"resetCredentialsFlow":"[^"]*"\|"acr.loa.map":"[^}]*}"' \
@@ -480,6 +482,9 @@ login_page="$(curl -fs -H 'Accept-Language: pt-BR' -G "${BASE_URL}/realms/${REAL
   --data-urlencode "code_challenge_method=S256")"
 check "tela de login carrega o CSS do tema workspace" "$(contains "$login_page" '/login/workspace/css/workspace.css')"
 check "tela de login em PT-BR" "$(contains "$login_page" 'Entrar no Workspace')"
+
+# Seção própria (também roda sozinha no CI): login social e vínculo de contas.
+bash scripts/smoke-google.sh || failures=$((failures + 1))
 
 echo "== Auditoria"
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

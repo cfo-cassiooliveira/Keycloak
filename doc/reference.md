@@ -68,6 +68,12 @@
   Dado do Legado recusado pelo User Profile nega o login (`LEGACY_UNAVAILABLE`, `error=invalid_profile`); o usuário é
   criado em transação própria já confirmada e o Legado é marcado logo em seguida (o listener cobre reset e atualização
   de senha). Riscos aceitos no ADR-0006: enumeração por tempo (até 2 s) e sem rate limit do Keycloak para contas só do Legado.
+- Login social só com Google (ADR-0009): fluxos `workspace-first-broker-login` (conta existente + senha dela) e
+  `workspace-post-broker-login` (OTP para `admin`, `log-investigator`, `user-importer` e quem já o configurou) no JSON e
+  no `ensure_google_login`; o provedor vem de `provisioning/workspace-google-idp.json`, só pelo provisioner e só com
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` no `.env`. Role privilegiada nova entra nos dois lugares (browser e
+  pós-broker). Provedor sem mappers, `storeToken=false`, `trustEmail=false`. Required action `idp_link` desligada (JSON
+  declara a lista completa; `disable_session_account_linking`). Provado pelo `GoogleLoginIT` e `smoke-google.sh`.
 - Realm com `eventsListeners` = `workspace-audit` + `legacy-migration-completion` (listeners recebem eventos mesmo com `eventsEnabled=false`, provado pelo `LegacyMigrationCompletionIT`), sem `jboss-logging`, com `eventsEnabled=false`, PKCE S256 por client policy, `admin-cli` sem password grant,
   brute force e política de senha ativos (cobertos por `WorkspaceRealmIT`).
 
@@ -122,3 +128,4 @@ docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build
 - ADR-0006: migração sob demanda dos usuários do Legado por Authenticator + API do Legado (aceito).
 - ADR-0007: identificador mascarado (`masked_login`) nos eventos de migração, exceção ao ADR-0002 (aceito).
 - ADR-0008: claim `account_origin` no client `cadastro` por Protocol Mapper próprio (aceito).
+- ADR-0009: login social só com Google, apenas para contas existentes (aceito).

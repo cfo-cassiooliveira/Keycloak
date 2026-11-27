@@ -18,5 +18,7 @@
   "invalidState": "Enter the 2-letter state code in uppercase.",
   "importLineId": "Import line id",
   "invalidImportLineId": "Invalid import line id.",
-  "invalidLegacyUserId": "Invalid legacy id."
+  "invalidLegacyUserId": "Invalid legacy id.",
+  "federatedIdentityUnavailableMessage": "There is no Workspace account for this sign-in. Google sign-in only works for existing accounts: contact the Workspace administrator.",
+  "federatedIdentityUnmatchedEssentialClaimMessage": "Google has not verified your e-mail, so access was denied. Verify the e-mail in your Google account and try again."
 }

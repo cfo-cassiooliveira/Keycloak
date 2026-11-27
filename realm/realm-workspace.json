@@ -230,6 +230,22 @@
     }
   ],
 
+  "requiredActions": [
+    { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20 },
+    { "alias": "UPDATE_PROFILE", "name": "Update Profile", "providerId": "UPDATE_PROFILE", "enabled": true, "defaultAction": false, "priority": 40 },
+    { "alias": "VERIFY_EMAIL", "name": "Verify Email", "providerId": "VERIFY_EMAIL", "enabled": true, "defaultAction": false, "priority": 50 },
+    { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 54 },
+    { "alias": "UPDATE_PASSWORD", "name": "Update Password", "providerId": "UPDATE_PASSWORD", "enabled": true, "defaultAction": false, "priority": 57 },
+    { "alias": "delete_account", "name": "Delete Account", "providerId": "delete_account", "enabled": false, "defaultAction": false, "priority": 60 },
+    { "alias": "UPDATE_EMAIL", "name": "Update Email", "providerId": "UPDATE_EMAIL", "enabled": false, "defaultAction": false, "priority": 70 },
+    { "alias": "webauthn-register", "name": "Webauthn Register", "providerId": "webauthn-register", "enabled": true, "defaultAction": false, "priority": 80 },
+    { "alias": "webauthn-register-passwordless", "name": "Webauthn Register Passwordless", "providerId": "webauthn-register-passwordless", "enabled": true, "defaultAction": false, "priority": 90 },
+    { "alias": "VERIFY_PROFILE", "name": "Verify Profile", "providerId": "VERIFY_PROFILE", "enabled": true, "defaultAction": false, "priority": 100 },
+    { "alias": "delete_credential", "name": "Delete Credential", "providerId": "delete_credential", "enabled": true, "defaultAction": false, "priority": 110 },
+    { "alias": "idp_link", "name": "Linking Identity Provider", "providerId": "idp_link", "enabled": false, "defaultAction": false, "priority": 120 },
+    { "alias": "CONFIGURE_RECOVERY_AUTHN_CODES", "name": "Recovery Authentication Codes", "providerId": "CONFIGURE_RECOVERY_AUTHN_CODES", "enabled": true, "defaultAction": false, "priority": 130 },
+    { "alias": "update_user_locale", "name": "Update User Locale", "providerId": "update_user_locale", "enabled": true, "defaultAction": false, "priority": 1000 }
+  ],
   "attributes": { "acr.loa.map": "{\"password\":1,\"otp\":2}" },
   "browserFlow": "workspace-browser",
   "resetCredentialsFlow": "workspace-reset-credentials",
@@ -367,6 +383,79 @@
         { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-reset-v3-not-admin", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false },
         { "authenticator": "reset-otp", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 40, "userSetupAllowed": false }
       ]
+    },
+    {
+      "alias": "workspace-first-broker-login",
+      "description": "Primeiro login com provedor externo: só conta existente, vinculada após a senha dela.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "idp-detect-existing-broker-user", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "idp-username-password-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-post-broker-login",
+      "description": "Pós-login com provedor externo: OTP para roles privilegiadas e para quem já o configurou.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 10, "flowAlias": "workspace-broker-v1-otp-by-admin", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 20, "flowAlias": "workspace-broker-v1-otp-by-log-investigator", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 30, "flowAlias": "workspace-broker-v1-otp-by-user-importer", "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 40, "flowAlias": "workspace-broker-v1-otp-configured", "userSetupAllowed": false },
+        { "authenticator": "allow-access-authenticator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 50, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-broker-v1-otp-by-admin",
+      "description": "OTP obrigatório para admin.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-broker-v1-role-admin", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-broker-v1-otp-not-used-by-admin", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-broker-v1-otp-by-log-investigator",
+      "description": "OTP obrigatório para log-investigator.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-broker-v1-role-log-investigator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-broker-v1-otp-not-used-by-log-investigator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-broker-v1-otp-by-user-importer",
+      "description": "OTP obrigatório para user-importer.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "workspace-broker-v1-role-user-importer", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-broker-v1-otp-not-used-by-user-importer", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "workspace-broker-v1-otp-configured",
+      "description": "OTP para quem já o configurou.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-credential", "authenticatorConfig": "workspace-broker-v1-otp-not-used-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
     }
   ],
   "authenticatorConfig": [
@@ -381,7 +470,14 @@
     { "alias": "workspace-reset-v3-role-admin", "config": { "condUserRole": "admin", "negate": "false" } },
     { "alias": "workspace-reset-v3-admin-not-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "true" } },
     { "alias": "workspace-reset-v3-not-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "true" } },
-    { "alias": "workspace-reset-v3-not-admin", "config": { "condUserRole": "admin", "negate": "true" } }
+    { "alias": "workspace-reset-v3-not-admin", "config": { "condUserRole": "admin", "negate": "true" } },
+    { "alias": "workspace-broker-v1-role-admin", "config": { "condUserRole": "admin", "negate": "false" } },
+    { "alias": "workspace-broker-v1-otp-not-used-by-admin", "config": { "credentials": "otp", "included": "false" } },
+    { "alias": "workspace-broker-v1-role-log-investigator", "config": { "condUserRole": "log-investigator", "negate": "false" } },
+    { "alias": "workspace-broker-v1-otp-not-used-by-log-investigator", "config": { "credentials": "otp", "included": "false" } },
+    { "alias": "workspace-broker-v1-role-user-importer", "config": { "condUserRole": "user-importer", "negate": "false" } },
+    { "alias": "workspace-broker-v1-otp-not-used-by-user-importer", "config": { "credentials": "otp", "included": "false" } },
+    { "alias": "workspace-broker-v1-otp-not-used-configured", "config": { "credentials": "otp", "included": "false" } }
   ],
 
   "clientProfiles": {

@@ -145,6 +145,31 @@ O `bootstrap-admin` é **temporário** e só entra pelo Admin Console. Na primei
 crie um administrador nominal com a role `admin`, configure OTP para ele (Required action *Configure OTP*) e apague o
 `bootstrap-admin`.
 
+## Login com Google
+
+Só para contas que já existem no realm ([ADR-0009](doc/adr/0009-login-social-so-com-google.md)). Opcional:
+
+1. No Google Cloud, crie um client OAuth do tipo *Web application* com a redirect URI
+   `http://localhost:8180/realms/workspace/broker/google/endpoint`.
+2. Preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env` (nunca em arquivo versionado).
+3. `docker compose up -d --build` (o provisioner cria o provedor; o botão **Google** aparece na tela de login).
+
+Teste manual com a conta Google (precisa existir no realm uma conta **com senha** e o mesmo e-mail):
+
+1. Abra `http://localhost:8180/realms/workspace/account/`, clique em **Google** e entre no Google.
+2. No primeiro acesso o Keycloak pede a senha da conta do Workspace; informe-a (quem tem OTP ou role privilegiada
+   digita ou configura o OTP em seguida).
+3. Saia e entre de novo pelo Google: sem senha, mas com OTP quando aplicável.
+4. Com uma conta Google sem conta correspondente no realm, o acesso deve ser negado e nenhum usuário criado.
+
+**Reset de senha ou de OTP e resposta a incidente**: trocar a senha ou o OTP não remove o vínculo com o Google (ele é
+gravado antes do OTP). Em suspeita de conta comprometida, remova também os vínculos: Admin Console → *Users* → usuário →
+*Identity provider links* → *Unlink account* (ou `DELETE /admin/realms/workspace/users/{id}/federated-identity/google`),
+encerre as sessões e só então redefina senha e OTP. Vínculos novos aparecem na auditoria como `FEDERATED_IDENTITY_LINK`.
+
+Para desligar o login com Google, desabilite o provedor no Admin Console: o provisioner preserva esse estado. O vínculo
+a partir de uma sessão aberta (Account Console) é desligado de propósito.
+
 ## Migração dos usuários do Legado
 
 O Keycloak migra os usuários do [`legado`](../legado) **sob demanda** ([ADR-0006](doc/adr/0006-migracao-sob-demanda-do-legado.md),

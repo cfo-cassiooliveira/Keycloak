@@ -18,5 +18,7 @@
   "invalidState": "Informe a sigla da UF com 2 letras maiúsculas.",
   "importLineId": "Id da linha de importação",
   "invalidImportLineId": "Id da linha de importação inválido.",
-  "invalidLegacyUserId": "Id do Legado inválido."
+  "invalidLegacyUserId": "Id do Legado inválido.",
+  "federatedIdentityUnavailableMessage": "Não há uma conta do Workspace para este acesso. O login com Google só vale para contas já existentes: fale com o administrador do Workspace.",
+  "federatedIdentityUnmatchedEssentialClaimMessage": "O Google não confirmou o seu e-mail, por isso o acesso foi recusado. Confirme o e-mail na sua conta Google e tente de novo."
 }

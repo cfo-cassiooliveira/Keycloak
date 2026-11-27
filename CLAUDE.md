@@ -60,6 +60,10 @@ docker compose run --rm --no-deps provisioner  # reaplica o provisionamento do m
 
 Client `cadastro-importer` (só service account; `view-users` + `manage-users`; nunca realm role nem `manage-realm`/`manage-clients`), role `user-importer` (nunca padrão) e atributo `importLineId` (só admin/serviço edita) consumidos pelo `../cadastro` (spec 002 do rabbitmq). Usuário importado nasce **sem senha**, com `UPDATE_PASSWORD`; e-mail de ativação vale 72 h só com `?lifespan=259200` na chamada (lifespan do realm fica no padrão). Segredo `KC_CADASTRO_IMPORTER_CLIENT_SECRET` só no `.env`. Regras e prova: [doc/reference.md](doc/reference.md#regras-detalhadas), seção "Importação em lote" do smoke.
 
+## Login com Google
+
+Só contas existentes, vinculadas só no primeiro login pela senha (`idp_link` desligado); OTP depois do Google para `admin`, `log-investigator`, `user-importer` e quem já o tem (ADR-0009). `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` só no `.env`; sem eles o provedor não é criado. Detalhes em [doc/reference.md](doc/reference.md#regras-detalhadas).
+
 ## Mais
 
 - Índice de docs, specs e ADRs: [doc/INDEX.md](doc/INDEX.md). Glossário, estrutura e decisões: [doc/reference.md](doc/reference.md).

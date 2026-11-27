@@ -1,0 +1,27 @@
+{
+  "alias": "google",
+  "providerId": "google",
+  "displayName": "Google",
+  "enabled": true,
+  "trustEmail": false,
+  "storeToken": false,
+  "addReadTokenRoleOnCreate": false,
+  "linkOnly": false,
+  "authenticateByDefault": false,
+  "firstBrokerLoginFlowAlias": "workspace-first-broker-login",
+  "postBrokerLoginFlowAlias": "workspace-post-broker-login",
+  "config": {
+    "clientId": "__GOOGLE_CLIENT_ID__",
+    "clientSecret": "__GOOGLE_CLIENT_SECRET__",
+    "syncMode": "IMPORT",
+    "defaultScope": "openid email",
+    "disableUserInfo": "true",
+    "filteredByClaim": "true",
+    "claimFilterName": "email_verified",
+    "claimFilterValue": "true",
+    "pkceEnabled": "true",
+    "pkceMethod": "S256",
+    "userIp": "false",
+    "offlineAccess": "false"
+  }
+}
