@@ -130,8 +130,11 @@ else
   check "sem GOOGLE_* o provedor existente também é reconciliado, mantendo o client id e o estado desligado" \
     "$([[ "$(provider_is_hardened)" == true && "$(account_linking_disabled)" == true \
       && "$(providers)" == *"\"clientId\":\"${GOOGLE_CLIENT_ID}\""* && "$(providers)" == *'"enabled":false'* ]] && echo true || echo false)"
-  set_provider_enabled true
-  check "provedor religado ao fim do smoke" "$(contains "$(providers)" '"enabled":true')"
+  # Só religa o que foi reparado: com falha no reparo o provedor fica desligado (sem login sem OTP nem e-mail confiado).
+  if [[ "$(provider_is_hardened)" == true && "$(account_linking_disabled)" == true ]]; then
+    set_provider_enabled true
+  fi
+  check "provedor reparado e religado ao fim do smoke" "$(contains "$(providers)" '"enabled":true')"
 fi
 
 if [[ "$failures" -gt 0 ]]; then
