@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reenvia ao Graylog a auditoria salva no fallback do Keycloak (ADR-0004), sem perder nem duplicar registros:
+# Reenvia ao Graylog a auditoria salva no fallback do Keycloak (ADR-0004). Prefere duplicar a perder (um reenvio
+# interrompido repete linhas); o que passou da retenção é descartado de propósito:
 #   1) renomeia o arquivo de forma atômica (o Keycloak passa a gravar num arquivo novo: sem corrida com o reenvio);
 #   2) reenvia linha a linha pelo input GELF HTTP e só conta como reenviado o que receber 202;
 #   3) o que falhar volta para o fallback; o que passou da retenção (LGPD, padrão 30 dias) é descartado;

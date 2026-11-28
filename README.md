@@ -18,6 +18,28 @@ Planejamento: [spec](doc/spec.md) · [plano](doc/plan.md) · [tarefas](doc/tasks
 
 Sumário: [Requisitos](#requisitos-da-máquina) · [Como usar](#como-usar) · [Migração do Legado](#migração-dos-usuários-do-legado) · [Graylog](#graylog) · [Tema](#tema-de-login) · [Novo SPI](#como-criar-um-novo-spi) · [Pendências](#pendências) · [Grafana](#grafana)
 
+## Destaques técnicos
+
+- [Migração sob demanda](src/main/java/com/workspace/keycloak/legacy/LegacyMigrationService.java): leva os usuários do
+  Legado no primeiro login, sem reset em massa nem cópia de hashes. Custo: o Legado fica de pé até a última migração.
+- [Auditoria por allowlist](src/main/java/com/workspace/keycloak/audit/AuditEventMapper.java): só os campos de uma lista
+  permitida são registrados, e campo novo do Keycloak fica de fora por padrão. Custo: sem IP na investigação.
+- [Fallback de log](src/main/java/com/workspace/keycloak/audit/gelf/GraylogAuditSink.java): Graylog lento ou fora do ar
+  não atrasa o login, e o registro vai para arquivo. Custo: a fila em memória se perde em queda abrupta.
+- [Fluxos de autenticação como código](provisioning/provision.sh): corrige realm já existente e troca o fluxo só depois
+  de conferir a estrutura. Custo: o que é reconciliado fica descrito também no JSON do realm.
+- [Login com Google](doc/adr/0009-login-social-so-com-google.md): não cria conta nem vincula só pelo e-mail. Custo: conta
+  sem senha não vincula.
+- [Claim `account_origin`](src/main/java/com/workspace/keycloak/token/AccountOriginProtocolMapper.java): informa a origem
+  da conta sem levar ao token o identificador que a comprova.
+- [Imagem](Dockerfile) e [compose](docker-compose.yml): imagem otimizada, imagens base fixadas por digest e portas só em
+  `127.0.0.1`. Só ambiente local.
+
+## Uso de IA
+
+Este projeto foi desenvolvido com auxílio de IA (**Claude Code**), na implementação e em code review. As decisões de
+arquitetura estão registradas nas ADRs, e as mudanças passam por testes automatizados e CI antes de entrar na `master`.
+
 ## Requisitos da máquina
 
 Só o **Docker** (Docker Desktop com ≥ 4 GB livres). Não é preciso instalar JDK nem Maven: build e testes rodam
@@ -38,7 +60,7 @@ winget install EclipseAdoptium.Temurin.21.JDK
 ./scripts/theme-unit.sh            # testes do JavaScript do tema (Vitest + jsdom, cobertura lcov)
 ./scripts/generate-env.sh          # cria/completa o .env com segredos aleatórios (idempotente)
 ./scripts/identity-network.sh      # cria a rede workspace-identity, compartilhada com cadastro e legado (idempotente)
-docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + Mailpit + provisioner do realm master
+docker compose up -d --build       # PostgreSQL 17 + Keycloak com as extensões + Mailpit + provisioner dos realms
 ./scripts/smoke-test.sh            # valida saúde, realms, provisioner, providers, tema e auditoria
 ./scripts/e2e.sh                   # E2E do tema (Playwright em container); lê KC_AUTOMATION_CLIENT_SECRET do .env (sem ele o teste "Atualizar senha" é ignorado)
 ./scripts/sonar-analysis.sh        # build + testes + análise no SonarQube local (falha se o Quality Gate reprovar)
@@ -56,14 +78,14 @@ mais ShellCheck e Trivy (dependências e imagem).
 
 ### Realm `workspace` e o Cadastro
 
-O realm entrega ao [`cadastro`](../cadastro) o client confidencial `cadastro` (Authorization Code + PKCE S256, redirect
+O realm entrega ao [`cadastro`](https://github.com/cfo-cassiooliveira/cadastro) o client confidencial `cadastro` (Authorization Code + PKCE S256, redirect
 exato `http://localhost:4300/bff/signin-oidc`, sem password grant). A conta de serviço dele tem só `view-users`,
 `query-users` e `manage-users` e precisa pedir `scope=kc-admin-api` para falar com a Admin API. Também entrega as roles
 `admin` e `user` (`user` é padrão), o reset de senha (e-mails no Mailpit) e o User Profile com os atributos do cadastro
 (`provisioning/workspace-user-profile.json`, editáveis só por admin). O segredo `KC_CADASTRO_CLIENT_SECRET` é gerado
 pelo `generate-env.sh` e aplicado pelo provisioner; o mesmo valor vai para o `.env` do cadastro.
 
-**Importação em lote** ([spec 002 do rabbitmq](../rabbitmq/docs/specs/002-uso-pelos-projetos/spec.md), ADR-0006 de lá): o
+**Importação em lote** ([spec 002 do rabbitmq](https://github.com/cfo-cassiooliveira/rabbitmq/blob/master/docs/specs/002-uso-pelos-projetos/spec.md), ADR-0006 de lá): o
 realm entrega o client confidencial `cadastro-importer`, só com conta de serviço (client credentials; sem Authorization
 Code, implícito nem password grant; `fullScopeAllowed=false`, nenhuma realm role no escopo). A conta de serviço tem só
 `view-users` e `manage-users` do `realm-management` (nada de `manage-realm` ou `manage-clients`) e precisa pedir
@@ -88,7 +110,7 @@ rode o provisioner (`docker compose up -d --build`): o mapper depende da extens�
 introspecção de quem está na audiência do token, e o `cadastro` não está na `aud` dos próprios tokens: hoje ele lê o
 claim no ID token, no access token ou no userinfo.
 
-**Investigação em logs** ([spec 001 do graylog](../graylog/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
+**Investigação em logs** ([spec 001 do graylog](https://github.com/cfo-cassiooliveira/graylog/blob/master/docs/specs/001-pseudonimizacao-logs/spec.md)): a realm role
 `log-investigator` libera, no Cadastro (policy `logs:investigate`), a geração de consultas por token no Graylog. Ela
 nunca é padrão: atribua só a pessoas nomeadas (Admin Console → realm `workspace` → Users → Role mapping). O login
 (fluxo `workspace-browser`) e o reset de senha (fluxo `workspace-reset-credentials`) exigem OTP de quem tem a role (`admin` também exige OTP, RN-12);
@@ -109,7 +131,7 @@ isso o limite de `auth_time`. O reset de senha também conclui o login com `acr=
 autenticador no primeiro login, só com a senha: quem tiver a senha nesse momento fica com o segundo fator. Peça ao
 usuário para configurar o OTP (Conta → Segurança → Autenticador) e só então atribua a role.
 
-**SSO do Grafana** ([ADR-0002 do grafana](../grafana/docs/adr/0002-sso-keycloak-grafana.md)): o realm entrega o client
+**SSO do Grafana** ([ADR-0002 do grafana](https://github.com/cfo-cassiooliveira/workspace-grafana/blob/master/docs/adr/0002-sso-keycloak-grafana.md)): o realm entrega o client
 confidencial `grafana` (Authorization Code + PKCE S256, sem Direct Grant, implícito nem conta de serviço; redirect exato
 `http://localhost:3000/login/generic_oauth` e post-logout `http://localhost:3000/login`; `fullScopeAllowed=false`).
 Roles de realm `grafana-viewer` (Viewer) e `grafana-editor` (Editor); a role `admin` (OTP já obrigatório) vira Admin do
@@ -172,7 +194,7 @@ a partir de uma sessão aberta (Account Console) é desligado de propósito.
 
 ## Migração dos usuários do Legado
 
-O Keycloak migra os usuários do [`legado`](../legado) **sob demanda** ([ADR-0006](doc/adr/0006-migracao-sob-demanda-do-legado.md),
+O Keycloak migra os usuários do [`legado`](https://github.com/cfo-cassiooliveira/legado-cadastro-usuarios) **sob demanda** ([ADR-0006](doc/adr/0006-migracao-sob-demanda-do-legado.md),
 [ADR-0007](doc/adr/0007-identificador-mascarado-nos-eventos-de-migracao.md)): no login, se o usuário não existe (ou é
 uma conta "casca" sem senha), o Legado decide se a senha confere e só então o usuário é criado no Keycloak, com os dados
 e a senha. O Keycloak chama o Legado só por `https://legado-api:8443/api/v1/internal/...`, confiando **somente na CA do
@@ -192,7 +214,7 @@ para `admin` e `log-investigator`. No reset, quem só existe no Legado é criado
 ( cd ../graylog && ./scripts/generate-env.sh && docker compose up -d --build )
 
 # 3) Legado com a API interna: gera CA, certificado e chaves HMAC (idempotente) e sobe com o override de identidade
-cd ../legado && cp -n .env.example .env   # preencha o .env uma vez (README do legado)
+cd ../legado-cadastro-usuarios && cp -n .env.example .env   # preencha o .env uma vez (README do legado)
 ./scripts/identity-network.sh && ./scripts/internal-credentials.sh
 docker compose -f docker-compose.yml -f docker-compose.identity.yml [-f docker-compose.graylog.yml] up -d --build
 
@@ -227,7 +249,7 @@ limit no Keycloak para contas só do Legado): ADR-0006.
 
 ### Testes de ponta a ponta da migração
 
-Ficam no [`cadastro`](../cadastro) (`./scripts/e2e.sh`, com a stack acima de pé; veja o `e2e/README.md` dele). No Keycloak,
+Ficam no [`cadastro`](https://github.com/cfo-cassiooliveira/cadastro) (`./scripts/e2e.sh`, com a stack acima de pé; veja o `e2e/README.md` dele). No Keycloak,
 os cenários da migração são cobertos por `LegacyLoginIT`, `LegacyResetIT`, `LegacyMigrationCompletionIT` e
 `LegacyMigrationEdgeCasesIT` (Legado simulado) dentro do `./scripts/build.sh`.
 
@@ -299,4 +321,4 @@ versão no `pom.xml` e no `Dockerfile`, e backup do volume `keycloak-db-data` an
 
 ## Grafana
 
-O `../grafana` usa o client `grafana` deste realm para o login único; detalhes, ordem de subida e testes em [../grafana](../grafana/README.md). Não rode este stack junto do Graylog nos smokes.
+O `../workspace-grafana` usa o client `grafana` deste realm para o login único; detalhes, ordem de subida e testes em [workspace-grafana](https://github.com/cfo-cassiooliveira/workspace-grafana/blob/master/README.md). Não rode este stack junto do Graylog nos smokes.

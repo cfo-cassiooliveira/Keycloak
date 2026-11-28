@@ -3,8 +3,9 @@ package com.workspace.keycloak.audit;
 /**
  * Tipos de evento de auditoria da migração de usuários do Legado (spec 001 do cadastro, plan §6).
  *
- * <p>Não existem no Keycloak, então não passam pelo {@code EventBuilder}: a SPI os emite direto ao
- * {@link AuditSink}. Só os tipos com {@code allowsMaskedLogin} aceitam o campo {@code masked_login} (ADR-0007, item 1).</p>
+ * <p>Não existem no Keycloak, então não passam pelo {@code EventBuilder}: a SPI os entrega ao listener
+ * {@code workspace-audit}, que os grava no mesmo {@link AuditSink}.
+ * Só os tipos com {@code allowsMaskedLogin} aceitam o campo {@code masked_login} (ADR-0007, item 1).</p>
  */
 public enum MigrationAuditEvent {
     LEGACY_USER_MIGRATED(AuditLevel.INFO, false),

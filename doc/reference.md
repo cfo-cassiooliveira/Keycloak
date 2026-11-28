@@ -60,10 +60,10 @@
 - Migração do Legado (ADR-0006): o cliente (`HttpLegacyUserClient`) só fala **HTTPS confiando só na CA do Legado**
   (`ca-file`, TLS 1.3, sem truststore do sistema), assina com HMAC-SHA256 (chave Base64 do Legado, `key-id`
   `keycloak-1`), timeout de 2 s e **sem retry**; não existe opção de config para liberar `http://`. A chave vem de
-  `KC_LEGADO_SIGNING_KEY` (`.env`, copiada de `LEGADO_INTERNAL_KEYCLOAK_KEY` do `../legado/.env`) e nunca é versionada
+  `KC_LEGADO_SIGNING_KEY` (`.env`, copiada de `LEGADO_INTERNAL_KEYCLOAK_KEY` do `../legado-cadastro-usuarios/.env`) e nunca é versionada
   nem logada. A mesma URL/chave/CA é repetida por provider no `docker-compose.yml`
   (`KC_SPI_AUTHENTICATOR__LEGACY_USERNAME_PASSWORD_FORM__*`, `KC_SPI_AUTHENTICATOR__LEGACY_RESET_CHOOSE_USER__*`,
-  `KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__*`); a CA pública é montada de `../legado/secrets/internal/ca.crt`
+  `KC_SPI_EVENTS_LISTENER__LEGACY_MIGRATION_COMPLETION__*`); a CA pública é montada de `../legado-cadastro-usuarios/secrets/internal/ca.crt`
   (suba o Legado e rode o `internal-credentials.sh` dele antes: sem o arquivo o Docker cria um diretório no lugar).
   Dado do Legado recusado pelo User Profile nega o login (`LEGACY_UNAVAILABLE`, `error=invalid_profile`); o usuário é
   criado em transação própria já confirmada e o Legado é marcado logo em seguida (o listener cobre reset e atualização
@@ -102,7 +102,7 @@ src/main/resources/META-INF/                  Registro de providers (services) e
 src/test/java/                                *Test (unitário) e *IT (Keycloak real via test-framework)
 realm/realm-workspace.json                    Realm de dev importado no compose e nos testes de integração
 theme-tests/                                  JS do tema: unit/ (Vitest + jsdom) e e2e/ (Playwright); lockfile versionado
-provisioning/provision.sh                     Provisioner do realm master (kcadm, idempotente) e reconciliação do workspace
+provisioning/provision.sh                     Provisioner dos realms master e workspace (kcadm, idempotente)
 scripts/                                      build, theme-unit, e2e, smoke-test, smoke-graylog, replay-fallback, sonar-analysis
 .github/workflows/ci.yml                      CI (ADR-0005)
 doc/                                          spec, plano, tarefas e ADRs
@@ -112,7 +112,7 @@ doc/                                          spec, plano, tarefas e ADRs
 
 ```bash
 # Chave do Legado (sem exibir o valor; o legado precisa ter rodado ./scripts/internal-credentials.sh):
-grep -q '^KC_LEGADO_SIGNING_KEY=.' .env || { echo "KC_LEGADO_SIGNING_KEY=$(grep -m1 '^LEGADO_INTERNAL_KEYCLOAK_KEY=' ../legado/.env | cut -d= -f2- | tr -d '\r')" >> .env; }
+grep -q '^KC_LEGADO_SIGNING_KEY=.' .env || { echo "KC_LEGADO_SIGNING_KEY=$(grep -m1 '^LEGADO_INTERNAL_KEYCLOAK_KEY=' ../legado-cadastro-usuarios/.env | cut -d= -f2- | tr -d '\r')" >> .env; }
 ./scripts/replay-fallback.sh           # reenvia ao Graylog a auditoria salva no fallback
 docker compose -f docker-compose.yml -f docker-compose.graylog.yml up -d --build   # com Graylog (use sempre que ele estiver no ar)
 ./scripts/smoke-graylog.sh             # Graylog ok, master sem dado pessoal, fora (fallback), volta (alerta), reenvio

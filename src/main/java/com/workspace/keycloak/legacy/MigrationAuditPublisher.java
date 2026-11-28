@@ -15,7 +15,8 @@ import com.workspace.keycloak.audit.WorkspaceAuditEventListenerProviderFactory;
  * Emite eventos de migração (LEGACY_*, RESET_UNKNOWN_USER) ao mesmo destino da auditoria do Keycloak (Graylog com
  * fallback, ou console), sem passar pelo {@code EventBuilder}.
  *
- * <p>Nunca propaga exceção: auditoria não pode quebrar o login nem o reset (RN-03).</p>
+ * <p>Reusa o listener para haver uma só allowlist, uma só fila e um só fallback. Nunca propaga exceção: auditoria não
+ * pode quebrar o login nem o reset (RN-03). Custo: sem o listener disponível, o evento de migração é perdido.</p>
  */
 public final class MigrationAuditPublisher {
 

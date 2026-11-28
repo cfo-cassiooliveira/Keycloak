@@ -29,6 +29,10 @@ import com.workspace.keycloak.legacy.LegacyUserMapper;
  * própria origem. O claim leva só a origem, nunca o valor do atributo. É um mapper próprio porque os nativos apenas
  * copiam o valor do atributo (exporiam o id da linha ou do Legado) ou emitem constante sem condição; o script mapper
  * depende de funcionalidade preview.</p>
+ *
+ * <p>O claim é derivado na emissão do token, então vale para contas já existentes sem migrar dados. Custo: classe sobre
+ * SPI interna (revista a cada upgrade), e a confiança depende de os atributos continuarem restritos no User Profile
+ * (ADR-0008).</p>
  */
 public class AccountOriginProtocolMapper extends AbstractOIDCProtocolMapper
         implements OIDCAccessTokenMapper, OIDCIDTokenMapper, UserInfoTokenMapper, TokenIntrospectionTokenMapper {

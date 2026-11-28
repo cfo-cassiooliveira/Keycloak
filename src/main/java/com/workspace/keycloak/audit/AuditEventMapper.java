@@ -17,8 +17,12 @@ import org.keycloak.events.admin.AuthDetails;
  *
  * <p>Usa lista de permissão (allowlist): qualquer campo não listado aqui é descartado,
  * inclusive campos que versões futuras do Keycloak venham a adicionar (ADR-0002).
- * Username, e-mail, IP, id de sessão, representação e caminho de recurso nunca saem; do caminho, só o UUID
- * do usuário afetado (código técnico, LGPD).</p>
+ * Username, e-mail, IP, id de sessão, representação e caminho de recurso não são copiados; do caminho, só o UUID
+ * do usuário afetado (código técnico, LGPD). A exceção é o identificador mascarado dos eventos de migração
+ * (ADR-0007).</p>
+ *
+ * <p>Filtra na origem, e não no Graylog, para o dado pessoal nem sair do processo. Custo: sem IP, investigar ataque
+ * distribuído fica mais difícil, e cada campo novo exige mudar o código.</p>
  */
 public final class AuditEventMapper {
 

@@ -1,5 +1,7 @@
 # Imagem otimizada do Keycloak do Workspace com as extensões deste projeto (ADR-0001).
-# Os testes não rodam aqui: o portão de qualidade é scripts/build.sh, executado antes do build da imagem.
+# Os testes não rodam aqui: o portão de qualidade é scripts/build.sh (no CI, ./mvnw verify), antes do build da imagem.
+# Três estágios: o Maven não vai para a imagem final, e o "kc.sh build" feito aqui permite subir com --optimized.
+# Custo: mudar o JAR ou uma opção de build (banco, cache, health, metrics) exige reconstruir a imagem.
 
 # 1) Empacota o JAR das extensões com JDK 21.
 FROM maven:3.9.16-eclipse-temurin-21@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320 AS extensions
