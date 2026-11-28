@@ -9,6 +9,9 @@ import java.nio.file.StandardOpenOption;
 /**
  * Arquivo local que guarda as mensagens GELF que não chegaram ao Graylog, uma por linha (JSON Lines).
  * Cada linha é a mensagem GELF original, pronta para ser reenviada ao input HTTP do Graylog.
+ *
+ * <p>Arquivo, e não fila externa, para não acrescentar um componente só para a contingência. Não há rotação nem limite
+ * de tamanho aqui: a retenção é aplicada no reenvio.</p>
  */
 public final class AuditFallbackStore {
 

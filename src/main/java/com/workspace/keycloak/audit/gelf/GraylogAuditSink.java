@@ -22,8 +22,12 @@ import com.workspace.keycloak.audit.AuditSink;
  * Envia os registros de auditoria ao Graylog e, se não conseguir, salva no arquivo de fallback local.
  *
  * <p>O envio é assíncrono (fila limitada + uma thread): um Graylog lento ou fora do ar nunca atrasa o login.
- * Nenhum registro é perdido: falha no envio, fila cheia ou desligamento do Keycloak levam ao fallback; se até o
- * arquivo falhar, o registro (que não tem dado pessoal) vai inteiro para o log do container.</p>
+ * Falha no envio, fila cheia ou desligamento do Keycloak levam ao fallback; se até o arquivo falhar, o registro vai
+ * inteiro para o log do container.</p>
+ *
+ * <p>Limites aceitos (ADR-0004): a fila fica em memória, então encerramento abrupto (SIGKILL, OOM) perde o que estiver
+ * nela; o reenvio do fallback é manual ({@code scripts/replay-fallback.sh}). Gravar tudo em disco antes de enviar
+ * dobraria a escrita de cada login.</p>
  */
 public final class GraylogAuditSink implements AuditSink {
 

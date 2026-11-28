@@ -30,6 +30,9 @@ import org.keycloak.userprofile.ValidationException;
  * tentarem criar o mesmo usuário, a violação de unicidade só desfaz a transação do perdedor (a do login em andamento
  * não fica marcada para rollback) e ele pode reler o usuário criado pelo vencedor. O User Profile do realm valida todos
  * os dados do Legado; o hash da senha usa o algoritmo do realm.</p>
+ *
+ * <p>Custos: já confirmado, o usuário permanece mesmo que o login em andamento falhe depois; e o código depende de
+ * classes internas do Keycloak, revistas a cada upgrade.</p>
  */
 public final class KeycloakMigrationUserStore implements MigrationUserStore {
 

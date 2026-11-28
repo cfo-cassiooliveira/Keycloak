@@ -44,6 +44,9 @@ import org.keycloak.util.JsonSerialization;
  * total único e <b>nenhum retry</b>, não segue redirecionamentos e assina cada chamada com um nonce novo. Qualquer erro,
  * timeout, status inesperado ou corpo fora do contrato vira {@code Unavailable} com um {@link FailureReason}.
  * O cliente não registra log: quem trata a falha audita (Art. VI.3). Login e senha só existem no corpo da requisição.</p>
+ *
+ * <p>Sem retry porque a chamada acontece dentro do login: repetir alongaria a espera e poderia contar tentativas a mais
+ * no bloqueio de conta do Legado. Custo: uma falha transitória aparece para o usuário como credencial inválida.</p>
  */
 public final class HttpLegacyUserClient implements LegacyUserClient {
 

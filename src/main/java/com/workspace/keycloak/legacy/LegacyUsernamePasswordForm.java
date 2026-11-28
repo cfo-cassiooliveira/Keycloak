@@ -13,6 +13,9 @@ import org.keycloak.services.managers.AuthenticationManager;
  * {@link #validateForm}: antes da validação padrão, {@link LegacyMigrationService} cria o usuário se o Legado confirmar
  * as credenciais. A validação em si, os eventos e o erro "Usuário ou senha inválidos." continuam os do Keycloak.
  *
+ * <p>Authenticator, e não User Storage Federation, porque a federação importaria o usuário já na consulta, mesmo com
+ * senha errada. Custo: herdar de classe interna do Keycloak (ADR-0006).</p>
+ *
  * <p>Sem cliente do Legado configurado ({@code client == null}) o comportamento é o do formulário padrão.</p>
  */
 public final class LegacyUsernamePasswordForm extends UsernamePasswordForm {

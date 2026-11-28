@@ -2,6 +2,7 @@
 # Uso: docker compose up -d --build && ./scripts/smoke-test.sh
 # Portas só em 127.0.0.1: 8180 (login/OIDC/Admin Console), 9100 (health/metrics) e 8025 (Mailpit).
 # 9000/9001 são do Graylog/SonarQube.
+# Só para desenvolvimento: uma instância, HTTP e cache local. Produção, cluster e TLS ficam fora do escopo.
 name: keycloak
 
 services:
@@ -117,7 +118,8 @@ services:
       - "127.0.0.1:8025:8025"
     restart: unless-stopped
 
-  # Provisionamento idempotente do realm master (auditoria, força bruta, client de serviço, sem password grant).
+  # Provisionamento idempotente dos realms master e workspace (auditoria, força bruta, fluxos, clients, sem password
+  # grant). Serviço à parte, com a mesma imagem (que já traz o kcadm): roda depois do healthcheck e termina.
   # Roda a cada "docker compose up"; para reaplicar: docker compose run --rm provisioner
   provisioner:
     image: workspace-keycloak:0.4.1

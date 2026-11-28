@@ -21,6 +21,10 @@ import org.keycloak.models.credential.PasswordCredentialModel;
  * marcação aqui é inofensiva.
  * Só vale para usuário com o atributo {@code legacyUserId} e com senha. A chamada HTTP roda <b>depois do commit</b>
  * da transação do Keycloak ({@code enlistAfterCompletion}) e nunca em rollback. Nunca propaga exceção ao fluxo.
+ *
+ * <p>Depois do commit para o Legado não ser marcado por uma senha que não foi gravada. Custos: se a chamada falhar,
+ * não há nova tentativa automática, só o evento {@code LEGACY_MIGRATION_MARK_FAILED}; e cada troca de senha de conta
+ * vinda do Legado repete a marcação, com a espera da chamada na requisição.</p>
  */
 public final class LegacyMigrationCompletionListener implements EventListenerProvider {
 

@@ -12,6 +12,9 @@ import org.keycloak.models.KeycloakSession;
  * Legado o conhecer. Depois, o Keycloak segue como sempre: usuário encontrado recebe o e-mail; inexistente não recebe
  * nada, e a tela de sucesso é a mesma nos dois casos (anti-enumeração).
  *
+ * <p>Sem este passo, quem só existe no Legado não teria como recuperar a senha. Custo: o pedido de reset já cria a
+ * conta (sem senha), antes de qualquer prova de posse do e-mail.</p>
+ *
  * <p>Sem cliente do Legado configurado ({@code client == null}) o comportamento é o padrão.</p>
  */
 public final class LegacyResetChooseUser extends ResetCredentialChooseUser {

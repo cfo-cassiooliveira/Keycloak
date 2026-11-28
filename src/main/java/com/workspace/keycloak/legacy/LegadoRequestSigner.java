@@ -16,6 +16,9 @@ import javax.crypto.spec.SecretKeySpec;
  * Assina as chamadas à API interna do Legado (ADR-0005 do legado), no mesmo formato que o Legado valida:
  * {@code keyId=<id>, t=<unix s>, n=<nonce base64url>, v1=<base64(HMAC-SHA256(chave, canônico))>}, com
  * canônico = {@code t \n n \n MÉTODO \n rota+query \n hex(SHA-256(corpo))}.
+ *
+ * <p>Chave emitida pelo Legado, em vez de token do Keycloak, para o Legado não depender do Keycloak. Custo: segredo
+ * compartilhado, distribuído e trocado fora deste projeto.</p>
  */
 public final class LegadoRequestSigner {
 

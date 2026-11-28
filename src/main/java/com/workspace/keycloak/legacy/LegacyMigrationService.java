@@ -14,7 +14,12 @@ import com.workspace.keycloak.audit.MigrationAuditEvent;
  *
  * <p>O serviço só <b>prepara</b> o usuário: quem autentica continua sendo o formulário padrão do Keycloak, que depois
  * lê a senha recém-gravada. Por isso todo resultado que não migra (senha errada, inexistente, Legado fora) deixa o
- * formulário padrão produzir o erro genérico "Usuário ou senha inválidos.". Nunca lança exceção.</p>
+ * formulário padrão produzir o erro genérico "Usuário ou senha inválidos.". Falha do Legado ou da gravação vira
+ * resultado, não exceção; erro ao ler o próprio Keycloak ({@code store.find}) propaga.</p>
+ *
+ * <p>Migrar sob demanda dispensa janela de migração, reset em massa e cópia de hashes: o Legado valida a senha, e só
+ * então ela vira credencial no Keycloak. Custos (ADR-0006): o Legado precisa ficar de pé enquanto houver conta não
+ * migrada, quem nunca entra não migra, e a chamada extra torna o tempo de resposta distinguível.</p>
  */
 public final class LegacyMigrationService {
 
@@ -84,7 +89,7 @@ public final class LegacyMigrationService {
 
     /**
      * Prepara o reset de senha (RN-06): usuário só no Legado é criado no Keycloak sem senha. {@code rawLogin} é o que
-     * foi digitado (login ou e-mail). Nunca lança exceção; o chamador mostra sempre a mesma resposta ao usuário.
+     * foi digitado (login ou e-mail). O chamador captura falhas e mostra sempre a mesma resposta ao usuário.
      */
     public ResetResult prepareReset(String rawLogin) {
         String login = LegacyUserMapper.normalizeLogin(rawLogin);

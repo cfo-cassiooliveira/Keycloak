@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Provisionamento idempotente do realm master (R3 da revisão de 2026-11-12), pela CLI oficial (kcadm.sh):
+# Provisionamento idempotente dos realms master e workspace pela CLI oficial (kcadm.sh). Existe porque o --import-realm
+# só cria realm novo: sem este script, uma correção de segurança no JSON não chegaria a um ambiente já criado.
+# Custo: o que é reconciliado fica descrito duas vezes (JSON e script).
 #   - auditoria pelo listener workspace-audit (sem dados pessoais) no lugar do jboss-logging padrão, que grava
 #     username e IP no log; nada de eventos ou ações administrativas gravados no banco (guardariam o IP);
 #   - proteção contra força bruta para os administradores;
@@ -250,8 +252,11 @@ release_flow() {
   fi
 }
 
+# O kcadm não tem transação, e editar o fluxo em uso deixaria o login quebrado ou sem OTP no meio do caminho: daí montar
+# ao lado e só trocar depois de conferir. Custo: muitas chamadas e nenhuma proteção contra duas execuções simultâneas.
 # Garante o fluxo $1 com a estrutura da função construtora $2, ligado ao binding $3 (ver bound_flow); $4 imprime a
-# assinatura esperada. Também reconcilia fluxo alterado à mão no Admin Console. Nunca liga fluxo pela metade: constrói em
+# assinatura esperada e $5 é o fluxo padrão para onde voltar. Também reconcilia fluxo alterado à
+# mão no Admin Console. Nunca liga fluxo pela metade: constrói em
 # "<alias>-staging" com subfluxos e configs também com "-staging" (não colidem com os do fluxo em uso), compara a
 # assinatura e só então liga o staging, apaga a versão anterior (o delete leva subfluxos e configs) e tira o sufixo de
 # tudo. Staging largado por execução interrompida é apagado. Mudança de estrutura: nova versão nos nomes (-v1- → -v2-).
@@ -303,8 +308,9 @@ ensure_flow() {
 }
 
 # Login do navegador, igual ao realm-workspace.json: step-up por nível de autenticação (LoA 1 = senha, acr "password";
-# LoA 2 = OTP nesta autenticação, acr "otp") e OTP obrigatório para log-investigator. O "Condition - credential" não
-# pede o OTP duas vezes na mesma autenticação.
+# LoA 2 = OTP nesta autenticação, acr "otp") e OTP obrigatório para log-investigator e admin. O "Condition - credential"
+# não pede o OTP duas vezes na mesma autenticação. O step-up existe porque ter a role não prova que o OTP foi usado:
+# a aplicação confere acr e auth_time. Um subfluxo por role porque "Condition - user role" aceita uma só.
 build_browser_flow() {
   local top="$1" s="$2"
   local forms="workspace-browser-v2-forms${s}"
@@ -364,8 +370,9 @@ expected_browser_flow() {
 SIGNATURE
 }
 
-# Reset de senha, igual ao realm-workspace.json: o reset conclui o login, então log-investigator confirma o OTP (ou
-# configura um); os demais seguem o reset padrão do Keycloak (o OTP configurado é removido e reconfigurado).
+# Reset de senha, igual ao realm-workspace.json: o reset conclui o login, então log-investigator e admin confirmam o OTP
+# (ou configuram um), para o acesso ao e-mail sozinho não bastar; os demais seguem o reset padrão do Keycloak (o OTP
+# configurado é removido e reconfigurado).
 build_reset_credentials_flow() {
   local top="$1" s="$2"
   kc create authentication/flows -r workspace -f - >/dev/null \
@@ -420,7 +427,8 @@ ensure_workspace_auth_flows() {
 }
 
 # Primeiro login com o Google (ADR-0009): só vincula a uma conta que já existe e só depois da senha dessa conta. Nunca
-# cria usuário (sem idp-create-user-if-unique) nem vincula sozinho por e-mail (sem idp-auto-link).
+# cria usuário (sem idp-create-user-if-unique) nem vincula sozinho por e-mail (sem idp-auto-link): e-mail igual não é
+# prova de posse da conta. Custo: conta sem senha (importada ainda não ativada, por exemplo) não consegue vincular.
 build_first_broker_login_flow() {
   local top="$1"
   kc create authentication/flows -r workspace -f - >/dev/null \
